@@ -1,0 +1,20 @@
+# Native: BCE(pos_weight=2.13) seg + center + offset, with native term weights.
+# Used by PointBeV and simple_bev (center/offset weight 0.05 each; bev is BCE not focal).
+center_weight: 0.05
+center:
+  _target_: GaussianLSS.losses.CenterLoss
+  min_visibility: ${min_visibility}
+  key: ${key}
+
+offset_weight: 0.05
+offset:
+  _target_: GaussianLSS.losses.OffsetLoss
+  min_visibility: ${min_visibility}
+  key: ${key}
+
+bev_weight: 1.0
+bev:
+  _target_: bevunify.losses.BCESegmentationLoss
+  min_visibility: ${min_visibility}
+  pos_weight: 2.13
+  key: ${key}

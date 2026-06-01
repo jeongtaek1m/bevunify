@@ -3,7 +3,7 @@
 defaults:
   - override /model: lss
   - override /gt: seg_only           # LSS loss uses binary seg only
-  - override /loss: seg
+  - override /loss: seg_bce        # LSS native: BCE pos_weight=2.13
   - override /recipe: lss            # Adam, constant LR
   - override /metrics: bev_metrics
 

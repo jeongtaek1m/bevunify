@@ -13,6 +13,10 @@ data:
   augment_bev: False
   vehicle: True
 
+# CVT native center weight = 0.1 (shared seg_center default is 2.0)
+loss:
+  center_weight: 0.1
+
 experiment:
   project: bevseg-cvt
 

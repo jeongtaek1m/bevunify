@@ -3,7 +3,7 @@
 defaults:
   - override /model: lara
   - override /gt: seg_only          # LaRa loss uses binary seg only
-  - override /loss: seg
+  - override /loss: seg_bce        # LaRa native: BCE pos_weight=2.13
   - override /recipe: lara          # Adam + StepLR, 30 epochs
   - override /metrics: bev_metrics
 

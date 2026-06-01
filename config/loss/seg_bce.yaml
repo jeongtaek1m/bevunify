@@ -1,0 +1,8 @@
+# Native bev criterion = BCEWithLogitsLoss(pos_weight=2.13), seg only.
+# Used by LaRa and lift-splat-shoot (their original loss).
+bev_weight: 1.0
+bev:
+  _target_: bevunify.losses.BCESegmentationLoss
+  min_visibility: ${min_visibility}
+  pos_weight: 2.13
+  key: ${key}

@@ -3,7 +3,7 @@
 defaults:
   - override /model: pointbev
   - override /gt: seg_center_offset   # PointBeV loss uses seg + center + offset
-  - override /loss: seg_center_offset
+  - override /loss: seg_center_offset_bce   # PointBeV native: BCE pos_weight, center/offset 0.05
   - override /recipe: pointbev
   - override /metrics: bev_metrics
 

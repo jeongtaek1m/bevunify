@@ -3,7 +3,7 @@
 defaults:
   - override /model: simplebev
   - override /gt: seg_center_offset   # simple_bev loss uses seg + center + offset
-  - override /loss: seg_center_offset
+  - override /loss: seg_center_offset_bce   # simple_bev native: BCE pos_weight, center/offset 0.05
   - override /recipe: simplebev
   - override /metrics: bev_metrics
 
