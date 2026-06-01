@@ -15,8 +15,8 @@ experiment:
 
   seed: 2025
   logger: wandb                      # wandb | csv
-  val_viz_interval: 100              # render 6cam|GT|pred every N val batches (per-epoch val)
-  train_viz_interval: 0              # also render every N TRAIN steps (0=off; e.g. 50)
+  val_viz_interval: 50               # render 6cam|GT|pred every N val batches (per-epoch val)
+  train_viz_interval: 150            # also render every N TRAIN steps (0=off)
   log_image_interval: 500
   save_last: True
 
