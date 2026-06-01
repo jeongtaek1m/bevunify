@@ -128,9 +128,13 @@ bevunify imports the 6 source repos **in place** — clone them beside this repo
   bevunify/     <- this repo
 ```
 
-Host env (one conda env with): `torch hydra-core pytorch-lightning nuscenes-devkit
-efficientnet_pytorch einops` plus, for some models:
-`pip install tensorboardX fairscale rich hydra-colorlog spconv-cu120`.
+Host env (one conda env, Python 3.8). Install PyTorch (CUDA) + the PointBeV sparse-conv
+wheel first, then the rest from `requirements.txt`:
+```bash
+pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu121
+pip install spconv-cu120==2.3.6
+pip install -r requirements.txt          # hydra, lightning, nuscenes-devkit, fairscale, rich, ...
+```
 
 Extra steps:
 - **GaussianLSS** rasterizer (`diff-gaussian-rasterization`) built.
