@@ -66,6 +66,7 @@ def main(cfg):
         # 6 cam | GT | pred every N val steps (val is not shuffled -> stable across epochs)
         ValVizCallback(key=cfg.key,
                        every_n_steps=cfg.experiment.get("val_viz_interval", 100),
+                       train_every_n_steps=cfg.experiment.get("train_viz_interval", 0),
                        out_dir=str(Path(cfg.experiment.save_dir) / "val_viz" / cfg.experiment.project)),
     ]
 

@@ -18,10 +18,11 @@ CAM_NAMES = ["FRONT_LEFT", "FRONT", "FRONT_RIGHT", "BACK_LEFT", "BACK", "BACK_RI
 
 
 class ValVizCallback(pl.Callback):
-    def __init__(self, key="vehicle", every_n_steps=100, out_dir="val_viz"):
+    def __init__(self, key="vehicle", every_n_steps=100, train_every_n_steps=0, out_dir="val_viz"):
         super().__init__()
         self.key = key
-        self.n = max(1, int(every_n_steps))
+        self.n = max(1, int(every_n_steps))        # val: every N val batches
+        self.train_n = int(train_every_n_steps)    # train: every N global steps (0 = off)
         self.out_dir = out_dir
 
     @staticmethod
@@ -38,7 +39,7 @@ class ValVizCallback(pl.Callback):
         rgb[veh & (vis >= 2) & (vis != 255)] = (0.3, 1.0, 0.45)
         return rgb
 
-    def _figure(self, imgs, gt, pr, vis, ep, b):
+    def _figure(self, imgs, gt, pr, vis, title):
         fig = plt.figure(figsize=(15, 5))
         gs = fig.add_gridspec(2, 5, width_ratios=[1, 1, 1, 1.4, 1.4], wspace=0.05, hspace=0.12)
         grid = [[0, 1, 2], [3, 4, 5]]
@@ -59,12 +60,10 @@ class ValVizCallback(pl.Callback):
         axp.imshow(pr, cmap="magma", vmin=0, vmax=1, origin="upper")
         axp.scatter([100], [100], c="cyan", s=14, marker="^")
         axp.set_title("pred (sigmoid)", fontsize=9); axp.axis("off")
-        fig.suptitle(f"val  epoch {ep}  batch {b}   | 6 cam | GT | pred", fontsize=10)
+        fig.suptitle(f"{title}   | 6 cam | GT | pred", fontsize=10)
         return fig
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        if not trainer.is_global_zero or batch_idx % self.n != 0:
-            return
+    def _emit(self, trainer, pl_module, batch, title, fname, wandb_key):
         if self.key not in batch:
             return
         was_training = pl_module.training
@@ -74,24 +73,35 @@ class ValVizCallback(pl.Callback):
             pl_module.train()
         if self.key not in pred:
             return
-
         imgs = batch["image"][0].detach().float().cpu()
         gt = batch[self.key][0, 0].detach().float().cpu().numpy()
         pr = pred[self.key][0, 0].sigmoid().detach().float().cpu().numpy()
         visk = f"{self.key}_visibility"
         vis = batch[visk][0].detach().cpu().numpy() if visk in batch else None
-        fig = self._figure(imgs, gt, pr, vis, trainer.current_epoch, batch_idx)
-
-        # W&B (best effort) + always save PNG
+        fig = self._figure(imgs, gt, pr, vis, title)
         try:
             from pytorch_lightning.loggers import WandbLogger
             if isinstance(trainer.logger, WandbLogger):
                 import wandb
-                trainer.logger.experiment.log(
-                    {"val_viz": wandb.Image(fig)}, step=trainer.global_step)
+                trainer.logger.experiment.log({wandb_key: wandb.Image(fig)}, step=trainer.global_step)
         except Exception:
             pass
         os.makedirs(self.out_dir, exist_ok=True)
-        fig.savefig(os.path.join(self.out_dir, f"ep{trainer.current_epoch:02d}_b{batch_idx:04d}.png"),
-                    dpi=100, bbox_inches="tight")
+        fig.savefig(os.path.join(self.out_dir, fname), dpi=100, bbox_inches="tight")
         plt.close(fig)
+
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+        if not trainer.is_global_zero or batch_idx % self.n != 0:
+            return
+        self._emit(trainer, pl_module, batch,
+                   f"val  epoch {trainer.current_epoch}  batch {batch_idx}",
+                   f"ep{trainer.current_epoch:02d}_b{batch_idx:04d}.png", "val_viz")
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        if self.train_n <= 0 or not trainer.is_global_zero:
+            return
+        if trainer.global_step % self.train_n != 0:
+            return
+        self._emit(trainer, pl_module, batch,
+                   f"train  step {trainer.global_step}",
+                   f"train_step{trainer.global_step:06d}.png", "train_viz")
