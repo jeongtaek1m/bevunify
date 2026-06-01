@@ -1,0 +1,6 @@
+# Binary segmentation only. MultipleLoss reads pred[${key}] vs batch[${key}].
+bev_weight: 1.0
+bev:
+  _target_: GaussianLSS.losses.BinarySegmentationLoss
+  min_visibility: ${min_visibility}
+  key: ${key}

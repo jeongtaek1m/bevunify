@@ -1,0 +1,8 @@
+# PointBeV. Wrapper instantiates the raw PointBeV net from the PointBeV repo config
+# (cfg.model.net) and adapts I/O. Consumes seg + center + offset (gt/seg_center_offset).
+# NOTE: PointBeV uses custom OmegaConf resolvers + temporal dim T; see wrapper.
+# Requires: pip install rich .
+_target_: bevunify.wrappers.pointbev.PointBeVWrapper
+key: ${key}
+repo_root: /home/jeongtae/bevseg/PointBeV
+config_name: train

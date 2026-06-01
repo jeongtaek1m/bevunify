@@ -1,0 +1,17 @@
+# @package _global_
+# cross_view_transformers original recipe: AdamW + OneCycleLR, step-based (~30k steps).
+optimizer:
+  lr: 4e-3
+  weight_decay: 1e-7
+scheduler:
+  div_factor: 10
+  pct_start: 0.3
+  final_div_factor: 10
+  max_lr: ${optimizer.lr}
+  total_steps: ${trainer.max_steps}
+  cycle_momentum: False
+  anneal_strategy: "linear"
+  interval: step
+trainer:
+  max_steps: 30001
+  max_epochs: -1

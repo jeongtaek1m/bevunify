@@ -1,0 +1,21 @@
+# @package _global_
+# python -m bevunify.train +experiment=simplebev
+defaults:
+  - override /model: simplebev
+  - override /gt: seg_center_offset   # simple_bev loss uses seg + center + offset
+  - override /loss: seg_center_offset
+  - override /recipe: simplebev
+  - override /metrics: bev_metrics
+
+data:
+  split_intrin_extrin: True
+  augment_img: False
+  augment_bev: False
+  vehicle: True
+
+experiment:
+  project: bevseg-simplebev
+
+key: vehicle
+min_visibility: 2
+val_only: False

@@ -1,0 +1,21 @@
+# @package _global_
+# python -m bevunify.train +experiment=cvt
+defaults:
+  - override /model: cvt
+  - override /gt: seg_center        # CVT loss uses seg + center
+  - override /loss: seg_center
+  - override /recipe: cvt           # CVT lr/scheduler/steps
+  - override /metrics: bev_metrics
+
+data:
+  split_intrin_extrin: True         # CVT forward needs intrinsics + extrinsics + cam_idx
+  augment_img: False
+  augment_bev: False
+  vehicle: True
+
+experiment:
+  project: bevseg-cvt
+
+key: vehicle
+min_visibility: 1
+val_only: False

@@ -1,0 +1,49 @@
+defaults:
+  - _self_
+  - model: null
+  - data: nuscenes
+  - gt: seg_center_offset      # default GT signals; overridden per experiment
+  - loss: null
+  - metrics: bev_metrics
+  - recipe: gaussianlss        # per-model training recipe (lr/scheduler/epochs)
+  - visualization: null
+
+experiment:
+  project: bevunify                  # per-model W&B project; overridden per experiment
+  uuid: ${now:%Y_%m%d_%H%M%S}
+  save_dir: ${hydra:runtime.cwd}/logs/
+
+  seed: 2025
+  logger: wandb                      # wandb | csv
+  val_viz_interval: 100              # render 6cam|GT|pred every N val steps
+  log_image_interval: 500
+  save_last: True
+
+# which GT family every model is trained/evaluated against
+key: vehicle
+min_visibility: 2
+val_only: False
+
+loader:
+  train_batch_size: 16          # per-GPU (4x). CVT/PointBeV at 6 cams may need lowering if OOM.
+  val_batch_size: 16
+  num_workers: 4
+  pin_memory: True
+  prefetch_factor: 2
+
+# optimizer + scheduler + max_steps/max_epochs come from the selected recipe/<model>.
+# lightning trainer — common fields only (recipe sets max_steps / max_epochs)
+trainer:
+  max_steps: 360000
+  max_epochs: -1
+  log_every_n_steps: 40
+  devices: -1
+  accelerator: gpu
+  precision: 32
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+  check_val_every_n_epoch: 1
+  val_check_interval: 1.0
+  num_sanity_val_steps: 0
+  gradient_clip_val: 5.0
+  sync_batchnorm: False

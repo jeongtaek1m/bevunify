@@ -1,0 +1,13 @@
+# Binary segmentation + center heatmap (no offset).
+# Requires gt/seg_center (center + visibility generated).
+center_weight: 2.0
+center:
+  _target_: GaussianLSS.losses.CenterLoss
+  min_visibility: ${min_visibility}
+  key: ${key}
+
+bev_weight: 1.0
+bev:
+  _target_: GaussianLSS.losses.BinarySegmentationLoss
+  min_visibility: ${min_visibility}
+  key: ${key}

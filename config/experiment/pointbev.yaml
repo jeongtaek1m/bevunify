@@ -1,0 +1,21 @@
+# @package _global_
+# python -m bevunify.train +experiment=pointbev
+defaults:
+  - override /model: pointbev
+  - override /gt: seg_center_offset   # PointBeV loss uses seg + center + offset
+  - override /loss: seg_center_offset
+  - override /recipe: pointbev
+  - override /metrics: bev_metrics
+
+data:
+  split_intrin_extrin: True
+  augment_img: False
+  augment_bev: False
+  vehicle: True
+
+experiment:
+  project: bevseg-pointbev
+
+key: vehicle
+min_visibility: 1
+val_only: False

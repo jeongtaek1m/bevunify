@@ -1,0 +1,6 @@
+# @package data
+# Full GaussianLSS GT: binary seg + center heatmap + center offset + visibility.
+# For models whose loss consumes center & offset (GaussianLSS, PointBeV, simple_bev).
+gt_center: true
+gt_offset: true
+gt_visibility: true

@@ -1,0 +1,27 @@
+# @package _global_
+# python -m bevunify.train +experiment=lara
+defaults:
+  - override /model: lara
+  - override /gt: seg_only          # LaRa loss uses binary seg only
+  - override /loss: seg
+  - override /recipe: lara          # Adam + StepLR, 30 epochs
+  - override /metrics: bev_metrics
+
+data:
+  split_intrin_extrin: True         # need intrinsics + extrinsics -> rots/trans
+  augment_img: False
+  augment_bev: False
+  vehicle: True
+
+experiment:
+  project: bevseg-lara
+
+# LaRa's Perceiver latent cross/self-attention OOMs at the default batch 16 on 48GB;
+# cap to 4 (effective 8 on 2 GPUs).
+loader:
+  train_batch_size: 4
+  val_batch_size: 4
+
+key: vehicle
+min_visibility: 1
+val_only: False

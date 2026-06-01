@@ -1,0 +1,6 @@
+# @package data
+# Binary seg + center heatmap + visibility (no offset).
+# For models whose loss consumes center but not offset (e.g. cross_view_transformers).
+gt_center: true
+gt_offset: false
+gt_visibility: true

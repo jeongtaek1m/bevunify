@@ -1,0 +1,21 @@
+# @package _global_
+# python -m bevunify.train +experiment=lss
+defaults:
+  - override /model: lss
+  - override /gt: seg_only           # LSS loss uses binary seg only
+  - override /loss: seg
+  - override /recipe: lss            # Adam, constant LR
+  - override /metrics: bev_metrics
+
+data:
+  split_intrin_extrin: True          # need intrinsics + extrinsics -> rots/trans
+  augment_img: False
+  augment_bev: False                 # keep off: simplifies LSS post_rots/post_trans
+  vehicle: True
+
+experiment:
+  project: bevseg-lss
+
+key: vehicle
+min_visibility: 2
+val_only: False

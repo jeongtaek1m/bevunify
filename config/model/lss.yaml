@@ -1,0 +1,23 @@
+# lift-splat-shoot. Plain nn.Module built directly via its class (no hydra in the repo).
+# Consumes binary seg only (gt/seg_only + loss/seg).
+# Requires: pip install tensorboardX (only if importing src.train; the wrapper imports
+# src.models.LiftSplatShoot directly to avoid it).
+_target_: bevunify.wrappers.lss.LSSWrapper
+key: ${key}
+repo_root: /home/jeongtae/bevseg/lift-splat-shoot
+outC: 1
+grid_conf:
+  xbound: [-50.0, 50.0, 0.5]
+  ybound: [-50.0, 50.0, 0.5]
+  zbound: [-10.0, 10.0, 20.0]
+  dbound: [4.0, 45.0, 1.0]
+data_aug_conf:
+  final_dim: [224, 480]
+  cams: [CAM_FRONT_LEFT, CAM_FRONT, CAM_FRONT_RIGHT, CAM_BACK_LEFT, CAM_BACK, CAM_BACK_RIGHT]
+  Ncams: 6
+  H: 900
+  W: 1600
+  resize_lim: [1.0, 1.0]
+  bot_pct_lim: [0.0, 0.0]
+  rot_lim: [0.0, 0.0]
+  rand_flip: False

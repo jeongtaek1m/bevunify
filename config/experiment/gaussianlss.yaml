@@ -1,0 +1,30 @@
+# @package _global_
+# python -m bevunify.train +experiment=gaussianlss
+defaults:
+  - override /model: gaussianlss
+  - override /gt: seg_center_offset
+  - override /loss: seg_center_offset
+  - override /recipe: gaussianlss
+  - override /metrics: bev_metrics
+
+data:
+  split_intrin_extrin: False     # GaussianLSS native: batch carries 'lidar2img'
+  augment_img: False             # augmentation off for fair, consistent comparison
+  augment_bev: False
+  vehicle: True
+
+# SegHead channel slices for the multi-head output.
+# NOTE: literal keys — OmegaConf does NOT interpolate ${key} into a dict KEY.
+model:
+  head:
+    outputs:
+      vehicle: [0, 1]
+      vehicle_center: [1, 2]
+      vehicle_offset: [2, 4]
+
+experiment:
+  project: bevseg-gaussianlss
+
+key: vehicle
+min_visibility: 2
+val_only: False

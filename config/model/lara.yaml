@@ -1,0 +1,7 @@
+# LaRa. Wrapper instantiates the raw LaRa net from the LaRa repo config (cfg.model.net)
+# and adapts I/O. LaRa consumes binary seg only (use gt/seg_only + loss/seg).
+# Requires: pip install fairscale ; env WEIGHTS_PATH for the EfficientNet cam encoder.
+_target_: bevunify.wrappers.lara.LaRaWrapper
+key: ${key}
+repo_root: /home/jeongtae/bevseg/LaRa
+config_name: train

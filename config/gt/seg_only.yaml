@@ -1,0 +1,6 @@
+# @package data
+# Binary seg only (+ visibility, kept for loss/metric masking when min_visibility > 0).
+# For models whose loss consumes only the binary mask (lift-splat-shoot, LaRa).
+gt_center: false
+gt_offset: false
+gt_visibility: true

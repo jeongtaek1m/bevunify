@@ -1,0 +1,12 @@
+# simple_bev (Segnet). Plain nn.Module built directly via its class (no hydra in repo).
+# Consumes seg + center + offset (gt/seg_center_offset + loss/seg_center_offset).
+# NOTE: BEV is indexed (Z=forward, X=lateral); wrapper transposes to the GaussianLSS
+# (row=Y, col=X) frame. Verify orientation with tests/probe_orientation.py.
+_target_: bevunify.wrappers.simplebev.SimpleBEVWrapper
+key: ${key}
+repo_root: /home/jeongtae/bevseg/simple_bev
+encoder_type: res101
+Z: 200
+Y: 8
+X: 200
+bounds: [-50.0, 50.0, -5.0, 5.0, -50.0, 50.0]   # XMIN,XMAX,ZMIN,ZMAX,YMIN,YMAX per simple_bev

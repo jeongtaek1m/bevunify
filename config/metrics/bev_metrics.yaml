@@ -1,0 +1,13 @@
+# Unified metric for ALL models: IoU@0.5 at vis>=2 and at vis-all.
+# (Same GT, same threshold, same visibility settings -> fair cross-model comparison.)
+iou_vis2:
+  _target_: bevunify.metrics.IoUMetricCfg
+  min_visibility: 2
+  key: ${key}
+  thresholds: [0.5]
+
+iou_visall:
+  _target_: bevunify.metrics.IoUMetricCfg
+  min_visibility: 0
+  key: ${key}
+  thresholds: [0.5]
