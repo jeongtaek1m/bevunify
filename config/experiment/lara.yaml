@@ -23,5 +23,4 @@ loader:
   val_batch_size: 4
 
 key: vehicle
-min_visibility: 1
 val_only: False

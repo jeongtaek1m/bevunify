@@ -17,5 +17,4 @@ experiment:
   project: bevseg-pointbev
 
 key: vehicle
-min_visibility: 1
 val_only: False

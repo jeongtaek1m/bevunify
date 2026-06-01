@@ -26,5 +26,4 @@ experiment:
   project: bevseg-gaussianlss
 
 key: vehicle
-min_visibility: 2
 val_only: False
