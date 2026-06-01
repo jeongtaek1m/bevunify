@@ -10,7 +10,7 @@ scheduler:
   max_lr: ${optimizer.lr}
   total_steps: ${trainer.max_steps}
   cycle_momentum: False
-  anneal_strategy: "linear"
+  anneal_strategy: "cos"          # CVT default (was mistakenly 'linear')
   interval: step
 trainer:
   max_steps: 30001

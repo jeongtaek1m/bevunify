@@ -18,9 +18,23 @@ from .geom import add_repo_to_path, rots_trans
 
 
 class LSSWrapper(nn.Module):
-    def __init__(self, key, repo_root, grid_conf, data_aug_conf, outC=1):
+    def __init__(self, key, repo_root, grid_conf, data_aug_conf, outC=1,
+                 backbone="efficientnet-b0"):
         super().__init__()
         self.key = key
+        # Original LSS normalizes images with ImageNet mean/std at the dataloader
+        # (third_party/lift-splat-shoot/src/tools.py:167-169); LSS.forward applies none.
+        # The unified loader feeds [0,1], so normalize here to feed the pretrained
+        # EfficientNet-b0 the distribution it was trained on.
+        self.register_buffer("_imnet_mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 1, 3, 1, 1))
+        self.register_buffer("_imnet_std", torch.tensor([0.229, 0.224, 0.225]).view(1, 1, 3, 1, 1))
+        # LSS's CamEncode hardcodes the trunk AND its channel dims for efficientnet-b0
+        # (third_party/lift-splat-shoot/src/models.py:43); other versions don't fit the
+        # downstream convs without repo changes. Expose the knob, but pin to native b0.
+        if backbone != "efficientnet-b0":
+            raise ValueError(
+                f"LSS backbone is pinned to 'efficientnet-b0' (repo CamEncode is wired "
+                f"to its channel dims); got '{backbone}'. Swapping needs LSS source changes.")
         repo_root = add_repo_to_path(repo_root)
         from src.models import LiftSplatShoot  # import the class directly (avoids src.train deps)
 
@@ -29,7 +43,8 @@ class LSSWrapper(nn.Module):
         self.net = LiftSplatShoot(grid_conf, data_aug_conf, outC=outC)
 
     def forward(self, batch):
-        x = batch["image"]                       # (B,N,3,H,W)
+        x = batch["image"]                       # (B,N,3,H,W) in [0,1]
+        x = (x - self._imnet_mean) / self._imnet_std   # ImageNet norm (matches original loader)
         intrins = batch["intrinsics"]            # (B,N,3,3)
         rots, trans = rots_trans(batch)                   # (B,N,3,3), (B,N,3) cam->ego
         B, N = x.shape[:2]

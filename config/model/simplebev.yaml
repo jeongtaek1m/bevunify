@@ -5,7 +5,7 @@
 _target_: bevunify.wrappers.simplebev.SimpleBEVWrapper
 key: ${key}
 repo_root: third_party/simple_bev
-encoder_type: res101
+encoder_type: res101   # backbone knob: res101 | res50 | effb0 (simple_bev Segnet native)
 Z: 200
 Y: 8
 X: 200

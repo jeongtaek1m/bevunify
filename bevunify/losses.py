@@ -6,6 +6,7 @@ MultipleLoss as the `bev` term.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from fvcore.nn import sigmoid_focal_loss
 
 
 class BCESegmentationLoss(nn.Module):
@@ -26,3 +27,76 @@ class BCESegmentationLoss(nn.Module):
             vis_mask = batch[f"{self.key}_visibility"] >= self.min_visibility
             mask = mask * vis_mask[:, None]
         return (loss * mask).sum() / (mask.sum() + eps)
+
+
+class FocalCenterLoss(nn.Module):
+    """CVT-native center loss: SigmoidFocalLoss on RAW center logits vs the center
+    heatmap (matches cross_view_transformer.losses.CenterLoss: gamma=2, alpha=-1,
+    reduction='none', then masked-mean at visibility>=min_visibility). Replaces the
+    host CenterLoss (MSE-on-sigmoid) so CVT's center branch is supervised faithfully.
+    """
+    def __init__(self, min_visibility=0, alpha=-1.0, gamma=2.0, key="vehicle"):
+        super().__init__()
+        self.min_visibility = min_visibility
+        self.alpha = alpha
+        self.gamma = gamma
+        self.key = key
+
+    def forward(self, pred_dict, batch, eps=1e-6):
+        k = f"{self.key}_center"
+        pred = pred_dict[k]                       # raw logits (no sigmoid)
+        target = batch[k]                         # center heatmap in [0,1]
+        loss = sigmoid_focal_loss(pred, target, self.alpha, self.gamma, reduction="none")
+        mask = torch.ones_like(target, dtype=torch.bool)
+        if self.min_visibility > 0:
+            vis_mask = batch[f"{self.key}_visibility"] >= self.min_visibility
+            mask = mask * vis_mask[:, None]
+        return (loss * mask).sum() / (mask.sum() + eps)
+
+
+class BalancedMSECenterLoss(nn.Module):
+    """simple_bev-native center loss: balanced MSE on the (sigmoid) center vs the
+    heatmap — positive (target>0.5) and negative (target<0.5) MSE are averaged
+    separately then *0.5 (matches simple_bev train_nuscenes.balanced_mse_loss,
+    valid=None => full map). The simple_bev wrapper feeds center LOGITS, so sigmoid
+    here recovers the model's center probability that the original loss operates on.
+    """
+    def __init__(self, key="vehicle"):
+        super().__init__()
+        self.key = key
+
+    def forward(self, pred_dict, batch, eps=1e-6):
+        k = f"{self.key}_center"
+        pred = pred_dict[k].sigmoid()             # wrapper re-logited; sigmoid -> center prob
+        target = batch[k]
+        mse = F.mse_loss(pred, target, reduction="none")
+        pos = (target > 0.5).float()
+        neg = (target < 0.5).float()
+        pos_loss = (mse * pos).sum() / (pos.sum() + eps)
+        neg_loss = (mse * neg).sum() / (neg.sum() + eps)
+        return (pos_loss + neg_loss) * 0.5
+
+
+class FootprintOffsetLoss(nn.Module):
+    """simple_bev-native offset loss: L1 (summed over the 2 offset channels) masked by
+    the vehicle SEG FOOTPRINT (matches simple_bev: reduce_masked_mean over seg_g*valid)
+    — supervised ONLY on vehicle pixels, not on background. Footprint is intersected
+    with visibility>=min_visibility to honor the unified vis>=2 ignore policy. This
+    replaces the host OffsetLoss, which masked by visibility>=2 over the whole BEV
+    (i.e. also supervised offset=0 on background).
+    """
+    def __init__(self, min_visibility=0, key="vehicle"):
+        super().__init__()
+        self.min_visibility = min_visibility
+        self.key = key
+
+    def forward(self, pred_dict, batch, eps=1e-6):
+        pred = pred_dict[f"{self.key}_offset"]
+        target = batch[f"{self.key}_offset"]
+        l1 = (pred - target).abs().sum(dim=1, keepdim=True)       # (B,1,H,W)
+        footprint = batch[self.key] > 0                           # vehicle pixels (B,1,H,W)
+        if self.min_visibility > 0:
+            vis_mask = batch[f"{self.key}_visibility"] >= self.min_visibility
+            footprint = footprint & vis_mask[:, None]
+        footprint = footprint.float()
+        return (l1 * footprint).sum() / (footprint.sum() + eps)

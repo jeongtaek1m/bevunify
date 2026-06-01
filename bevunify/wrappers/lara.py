@@ -11,6 +11,7 @@ Requires: pip install fairscale ; env WEIGHTS_PATH (EfficientNet cam-encoder wei
 import os
 import torch
 import torch.nn as nn
+from omegaconf import OmegaConf
 from hydra.utils import instantiate
 
 from .geom import add_repo_to_path, rots_trans
@@ -19,7 +20,7 @@ from .repo_compose import compose_repo_cfg
 
 class LaRaWrapper(nn.Module):
     def __init__(self, key, repo_root, config_name="train",
-                 experiment="LaRa_inCamrays_outCoord", imagenet_norm=True):
+                 experiment="LaRa_inCamrays_outCoord", imagenet_norm=True, backbone="b4"):
         super().__init__()
         self.key = key
         self.imagenet_norm = imagenet_norm
@@ -33,6 +34,9 @@ class LaRaWrapper(nn.Module):
         # the experiment fills mandatory input_embeddings / query_generators.
         cfg = compose_repo_cfg(config_dir=f"{repo_root}/configs", config_name=config_name,
                                overrides=[f"experiment={experiment}"])
+        # backbone knob (LaRa CamEncode EfficientNet; native 'b4', also 'b0').
+        OmegaConf.set_struct(cfg, False)
+        cfg.model.net.cam_encoder.version = backbone
         # VERIFY: grid_conf/data_aug_conf in LaRa default to 200x200 / +-50m (matches host).
         self.net = instantiate(cfg.model.net)
 

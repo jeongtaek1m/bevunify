@@ -5,3 +5,4 @@ _target_: bevunify.wrappers.lara.LaRaWrapper
 key: ${key}
 repo_root: third_party/LaRa
 config_name: train
+backbone: b4       # LaRa CamEncode EfficientNet version; also 'b0'

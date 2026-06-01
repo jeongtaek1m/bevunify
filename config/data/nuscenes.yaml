@@ -41,7 +41,8 @@ ped: False
 #   True  -> batch carries separate 'intrinsics' + 'extrinsics' (needed by most wrappers)
 split_intrin_extrin: False
 
-augment_img: False
-augment_bev: False
+# augmentation (augment_img / augment_bev / extrin_noise) is owned by the
+# `augmentation/` config group (default `none` = all OFF). Enable per run with
+# `augmentation=warp|extrin_noise|warp_extrin`. See config/augmentation/.
 
 # gt_center / gt_offset / gt_visibility are supplied by the selected `gt/` preset

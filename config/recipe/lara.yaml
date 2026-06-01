@@ -1,8 +1,11 @@
 # @package _global_
-# LaRa original recipe: Adam + StepLR (epoch-based), 30 epochs.
+# LaRa PUBLISHED recipe (third_party/LaRa, experiment=LaRa_inCamrays_outCoord):
+# AdamW lr=1e-3 wd=1e-5 + StepLR(20,0.1) per-epoch, 30 epochs, NO grad clip, sync BN.
+# (Prior bevunify tries used plain Adam @ 3e-4/1e-3/2e-3 and learned ~10x too slow;
+#  AdamW + sync_batchnorm match the reference run "lara_full_30ep" that reached IoU 0.37.)
 optimizer:
-  _target_: torch.optim.Adam
-  lr: 3e-4
+  _target_: torch.optim.AdamW
+  lr: 1e-3
   weight_decay: 1e-5
 scheduler:
   _target_: torch.optim.lr_scheduler.StepLR
@@ -13,3 +16,4 @@ trainer:
   max_steps: -1
   max_epochs: 30
   gradient_clip_val: null     # LaRa native: NO gradient clipping (overrides base 5.0)
+  sync_batchnorm: True        # LaRa native: BN synced across GPUs (deep b4 trunk @ small per-GPU batch)

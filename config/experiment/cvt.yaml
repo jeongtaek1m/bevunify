@@ -3,17 +3,16 @@
 defaults:
   - override /model: cvt
   - override /gt: seg_center        # CVT loss uses seg + center
-  - override /loss: seg_center
+  - override /loss: seg_focal_center   # CVT native: focal seg + focal center (on logits)
   - override /recipe: cvt           # CVT lr/scheduler/steps
   - override /metrics: bev_metrics
+  - override /augmentation: none    # set warp|extrin_noise|warp_extrin to augment
 
 data:
   split_intrin_extrin: True         # CVT forward needs intrinsics + extrinsics + cam_idx
-  augment_img: False
-  augment_bev: False
   vehicle: True
 
-# CVT native center weight = 0.1 (shared seg_center default is 2.0)
+# CVT native center weight = 0.1 (matches seg_focal_center default; explicit for clarity)
 loss:
   center_weight: 0.1
 

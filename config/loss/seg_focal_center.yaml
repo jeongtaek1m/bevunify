@@ -1,0 +1,16 @@
+# CVT-native: focal binary seg + focal center (SigmoidFocalLoss on logits).
+# Matches cross_view_transformer's BinarySegmentationLoss + CenterLoss (both focal),
+# replacing the host MSE-on-sigmoid CenterLoss. Requires gt/seg_center.
+center_weight: 0.1
+center:
+  _target_: bevunify.losses.FocalCenterLoss
+  min_visibility: ${min_visibility}
+  alpha: -1.0
+  gamma: 2.0
+  key: ${key}
+
+bev_weight: 1.0
+bev:
+  _target_: GaussianLSS.losses.BinarySegmentationLoss
+  min_visibility: ${min_visibility}
+  key: ${key}

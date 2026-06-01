@@ -6,6 +6,7 @@ _target_: bevunify.wrappers.lss.LSSWrapper
 key: ${key}
 repo_root: third_party/lift-splat-shoot
 outC: 1
+backbone: efficientnet-b0   # pinned: repo CamEncode is wired to b0 channel dims (see wrapper)
 grid_conf:
   xbound: [-50.0, 50.0, 0.5]
   ybound: [-50.0, 50.0, 0.5]

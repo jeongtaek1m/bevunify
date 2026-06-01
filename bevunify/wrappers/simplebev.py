@@ -36,7 +36,9 @@ class SimpleBEVWrapper(nn.Module):
 
     def _build_vox_util(self, B, device):
         from utils.vox import Vox_util
-        scene_centroid = torch.zeros(B, 3, device=device)
+        # original simple_bev shifts the scene centroid 1 m down (train_nuscenes.py:27-34),
+        # moving the vertical sampling window to Y in [-4, 6] rather than [-5, 5].
+        scene_centroid = torch.tensor([0.0, 1.0, 0.0], device=device).unsqueeze(0).expand(B, 3)
         return Vox_util(self.Z, self.Y, self.X, scene_centroid=scene_centroid,
                         bounds=self.bounds, assert_cube=False)
 
@@ -50,15 +52,21 @@ class SimpleBEVWrapper(nn.Module):
         B = image.shape[0]
         pix_T_cams = intrinsics_to_4x4(batch["intrinsics"])      # (B,N,4,4)
 
-        # cam0_T_camX = E_0 @ inv(E_X), with E = lidar->cam extrinsics
+        # cam0_T_camX = E_0 @ inv(E_X), with E = lidar->cam extrinsics.
+        # Reference cam = CAM_FRONT (index 1 in the unified order
+        # [CAM_FRONT_LEFT, CAM_FRONT, CAM_FRONT_RIGHT, ...]), matching original
+        # refcam_id=1, so the BEV grid is built in the ego-forward frame. Using index 0
+        # (CAM_FRONT_LEFT) rotates the whole BEV ~55deg, which a static flip can't fix.
         E = batch["extrinsics"]                                  # (B,N,4,4)
-        E0 = E[:, 0:1]                                           # (B,1,4,4)
+        E0 = E[:, 1:2]                                           # (B,1,4,4) = CAM_FRONT
         cam0_T_camXs = torch.matmul(E0, torch.inverse(E))        # (B,N,4,4)
 
         vox_util = self._build_vox_util(B, image.device)
-        # VERIFY: simple_bev expects rgb roughly centered; it does (rgb-0.5) internally.
+        # Segnet does (rgb + 0.5 - imnet_mean)/imnet_std internally (nets/segnet.py:400);
+        # the original centers the [0,1] loader image to [-0.5,0.5] (train_nuscenes.py:111).
+        # Feed image-0.5 so the model's internal +0.5 cancels -> true ImageNet norm.
         _, _, seg_e, center_e, offset_e = self.net(
-            image, pix_T_cams, cam0_T_camXs, vox_util, rad_occ_mem0=None)
+            image - 0.5, pix_T_cams, cam0_T_camXs, vox_util, rad_occ_mem0=None)
 
         eps = 1e-6
         # offset: flip(-2) relocates pixels, then negate ch0 (delta-col sign) to match GT; ch1 unchanged

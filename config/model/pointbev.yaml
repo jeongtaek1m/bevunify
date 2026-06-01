@@ -6,3 +6,4 @@ _target_: bevunify.wrappers.pointbev.PointBeVWrapper
 key: ${key}
 repo_root: third_party/PointBeV
 config_name: train
+backbone: b4       # PointBeV EfficientNet version; also 'b0' (ResNet via repo net/backbone group)

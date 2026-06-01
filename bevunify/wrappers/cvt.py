@@ -18,7 +18,7 @@ from .repo_compose import compose_repo_cfg
 
 class CVTWrapper(nn.Module):
     def __init__(self, key, repo_root, config_name="config", center=True,
-                 experiment="cvt_nuscenes_vehicle"):
+                 experiment="cvt_nuscenes_vehicle", backbone="efficientnet-b4"):
         super().__init__()
         self.key = key
         repo_root = add_repo_to_path(repo_root)
@@ -34,6 +34,8 @@ class CVTWrapper(nn.Module):
         if center:
             outputs[f"{key}_center"] = [1, 2]
         OmegaConf.set_struct(cfg, False)
+        # backbone knob (CVT EfficientNetExtractor; native efficientnet-b4 / -b0).
+        cfg.model.encoder.backbone.model_name = backbone
         cfg.model.outputs = OmegaConf.create(outputs)
         self.net = instantiate(cfg.model)
 

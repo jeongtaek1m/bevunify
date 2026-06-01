@@ -2,6 +2,7 @@ defaults:
   - _self_
   - model: null
   - data: nuscenes
+  - augmentation: none         # central aug manager (image warp / extrinsic noise); default OFF
   - gt: seg_center_offset      # default GT signals; overridden per experiment
   - loss: null
   - metrics: bev_metrics

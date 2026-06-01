@@ -6,11 +6,10 @@ defaults:
   - override /loss: seg_center_offset_bce   # PointBeV native: BCE pos_weight, center/offset 0.05
   - override /recipe: pointbev
   - override /metrics: bev_metrics
+  - override /augmentation: none    # set warp|extrin_noise|warp_extrin to augment
 
 data:
   split_intrin_extrin: True
-  augment_img: False
-  augment_bev: False
   vehicle: True
 
 experiment:

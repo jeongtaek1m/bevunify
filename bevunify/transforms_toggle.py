@@ -16,13 +16,24 @@ from nuscenes.utils.data_classes import Box
 from GaussianLSS.data.transforms import LoadDataTransform, Sample
 from GaussianLSS.data.common import INTERPOLATION, sincos2quaternion
 
+from .augmentation import ImageWarp, build_extrinsic_noise
+
 
 class ToggleLoadDataTransform(LoadDataTransform):
-    def __init__(self, *args, gt_center=True, gt_offset=True, gt_visibility=True, **kwargs):
+    def __init__(self, *args, gt_center=True, gt_offset=True, gt_visibility=True,
+                 extrin_noise=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.gt_center = bool(gt_center)
         self.gt_offset = bool(gt_offset)
         self.gt_visibility = bool(gt_visibility)
+
+        # Augmentation is managed centrally in bevunify.augmentation (third_party
+        # left untouched). Image warp: re-wrap the host transform as ImageWarp so
+        # future warp tweaks live in bevunify. Extrinsic noise: None unless enabled.
+        training = kwargs.get("training", True)
+        if self.augment_img is not None:
+            self.augment_img = ImageWarp(kwargs.get("img_params"), training)
+        self.extrin_noise = build_extrinsic_noise(extrin_noise, training)
 
     def get_bev_from_gtbbox(self, sample: Sample, bev_augm, mode="vehicle"):
         scene_dir = self.labels_dir / sample.scene
@@ -122,6 +133,15 @@ class ToggleLoadDataTransform(LoadDataTransform):
         if "cam_ids" not in batch:
             batch.cam_ids = list(range(len(batch.images)))
 
+        # Extrinsic calibration-noise aug: perturb the per-camera extrinsic fed to
+        # the model; the image and BEV GT stay clean. Recompute the cached cam->ego
+        # so wrappers reading 'ego_from_cam' see the noise too. Train-only (active).
+        if self.extrin_noise is not None and self.extrin_noise.active:
+            noised = self.extrin_noise(batch.extrinsics)
+            batch.extrinsics = noised
+            if "ego_from_cam" in batch:
+                batch.ego_from_cam = np.linalg.inv(noised)
+
         result = dict()
         result["view"] = torch.tensor(batch.view)
         result["token"] = batch["token"]
@@ -132,6 +152,11 @@ class ToggleLoadDataTransform(LoadDataTransform):
         if self.image_data:
             get_cameras = self.get_cameras_augm if self.augment_img is not None else self.get_cameras
             result.update(get_cameras(batch, **self.image_config))
+            # The augment path (get_cameras_augm) leaves cam_idx commented out;
+            # the non-augment path sets it. CVT (and any cam_idx consumer) needs it,
+            # so re-inject when the image-warp path dropped it.
+            if "cam_idx" not in result:
+                result["cam_idx"] = torch.LongTensor(batch.cam_ids)
             # materialized cam->ego convention from bevunify.datagen (if present).
             # (Valid as-is while augment_bev is off; with BEV aug it would need
             #  pre-multiplying by inv(bev_augm) to stay consistent with extrinsics.)

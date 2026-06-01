@@ -9,6 +9,8 @@ opacity_filter: 0.01
 img_h: ${data.image.h}
 img_w: ${data.image.w}
 
+# backbone knob: this whole block is the camera encoder (swap _target_ / return_list
+# to change it). Native = GaussianLSS EfficientNet.
 backbone:
   _target_: GaussianLSS.model.backbones.efficientnet.EfficientNet
   image_height: ${data.image.h}

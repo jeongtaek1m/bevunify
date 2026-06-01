@@ -1,0 +1,10 @@
+# @package data
+# Extrinsic-noise augmentation only. Per-camera SE(3) perturbation of the
+# extrinsic fed to the model (image + GT untouched) -> calibration-noise robustness.
+# Defaults are mild; tune on the CLI, e.g. data.extrin_noise.rot_std_deg=2.0
+augment_img: False
+augment_bev: False
+extrin_noise:
+  enabled: True
+  rot_std_deg: 1.0
+  trans_std_m: 0.05

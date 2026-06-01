@@ -3,14 +3,13 @@
 defaults:
   - override /model: simplebev
   - override /gt: seg_center_offset   # simple_bev loss uses seg + center + offset
-  - override /loss: seg_center_offset_bce   # simple_bev native: BCE pos_weight, center/offset 0.05
+  - override /loss: seg_balanced_footprint_bce   # simple_bev native: BCE seg + balanced-MSE center + footprint offset
   - override /recipe: simplebev
   - override /metrics: bev_metrics
+  - override /augmentation: none    # set warp|extrin_noise|warp_extrin to augment
 
 data:
   split_intrin_extrin: True
-  augment_img: False
-  augment_bev: False
   vehicle: True
 
 experiment:

@@ -6,11 +6,10 @@ defaults:
   - override /loss: seg_center_offset
   - override /recipe: gaussianlss
   - override /metrics: bev_metrics
+  - override /augmentation: none   # off for fair comparison; warp|extrin_noise|warp_extrin to augment
 
 data:
   split_intrin_extrin: False     # GaussianLSS native: batch carries 'lidar2img'
-  augment_img: False             # augmentation off for fair, consistent comparison
-  augment_bev: False
   vehicle: True
 
 # SegHead channel slices for the multi-head output.

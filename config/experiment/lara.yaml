@@ -6,11 +6,10 @@ defaults:
   - override /loss: seg_bce        # LaRa native: BCE pos_weight=2.13
   - override /recipe: lara          # Adam + StepLR, 30 epochs
   - override /metrics: bev_metrics
+  - override /augmentation: none    # set warp|extrin_noise|warp_extrin to augment
 
 data:
   split_intrin_extrin: True         # need intrinsics + extrinsics -> rots/trans
-  augment_img: False
-  augment_bev: False
   vehicle: True
 
 experiment:

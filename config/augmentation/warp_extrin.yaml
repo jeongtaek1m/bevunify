@@ -1,0 +1,8 @@
+# @package data
+# Both augmentations: image warp + per-camera extrinsic calibration noise.
+augment_img: True
+augment_bev: False
+extrin_noise:
+  enabled: True
+  rot_std_deg: 1.0
+  trans_std_m: 0.05
