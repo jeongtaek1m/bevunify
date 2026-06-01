@@ -12,3 +12,4 @@ scheduler:
 trainer:
   max_steps: -1
   max_epochs: 30
+  gradient_clip_val: null     # LaRa native: NO gradient clipping (overrides base 5.0)
