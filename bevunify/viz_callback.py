@@ -28,7 +28,17 @@ class ValVizCallback(pl.Callback):
     def _cam(t):
         return t.permute(1, 2, 0).clamp(0, 1).numpy()
 
-    def _figure(self, imgs, gt, pr, ep, b):
+    @staticmethod
+    def _colorize(gt, vis):
+        """RGB GT: red=vis1 (ignored by vis>=2 loss), green=vis>=2 (supervised)."""
+        h, w = gt.shape
+        rgb = np.zeros((h, w, 3), dtype=np.float32)
+        veh = gt > 0.5
+        rgb[veh & (vis == 1)] = (1.0, 0.25, 0.25)
+        rgb[veh & (vis >= 2) & (vis != 255)] = (0.3, 1.0, 0.45)
+        return rgb
+
+    def _figure(self, imgs, gt, pr, vis, ep, b):
         fig = plt.figure(figsize=(15, 5))
         gs = fig.add_gridspec(2, 5, width_ratios=[1, 1, 1, 1.4, 1.4], wspace=0.05, hspace=0.12)
         grid = [[0, 1, 2], [3, 4, 5]]
@@ -38,9 +48,13 @@ class ValVizCallback(pl.Callback):
                 ax.imshow(self._cam(imgs[grid[r][c]]))
                 ax.set_title(CAM_NAMES[grid[r][c]], fontsize=8); ax.axis("off")
         axg = fig.add_subplot(gs[:, 3])
-        axg.imshow(gt, cmap="magma", vmin=0, vmax=1, origin="upper")
-        axg.scatter([100], [100], c="cyan", s=14, marker="^")
-        axg.set_title("GT (vehicle)  front↑ left←", fontsize=9); axg.axis("off")
+        if vis is not None:
+            axg.imshow(self._colorize(gt, vis), origin="upper")
+            axg.set_title("GT  red=vis1 green=vis>=2  front^ left<", fontsize=8)
+        else:
+            axg.imshow(gt, cmap="magma", vmin=0, vmax=1, origin="upper")
+            axg.set_title("GT (vehicle)  front^ left<", fontsize=9)
+        axg.scatter([100], [100], c="cyan", s=14, marker="^"); axg.axis("off")
         axp = fig.add_subplot(gs[:, 4])
         axp.imshow(pr, cmap="magma", vmin=0, vmax=1, origin="upper")
         axp.scatter([100], [100], c="cyan", s=14, marker="^")
@@ -64,7 +78,9 @@ class ValVizCallback(pl.Callback):
         imgs = batch["image"][0].detach().float().cpu()
         gt = batch[self.key][0, 0].detach().float().cpu().numpy()
         pr = pred[self.key][0, 0].sigmoid().detach().float().cpu().numpy()
-        fig = self._figure(imgs, gt, pr, trainer.current_epoch, batch_idx)
+        visk = f"{self.key}_visibility"
+        vis = batch[visk][0].detach().cpu().numpy() if visk in batch else None
+        fig = self._figure(imgs, gt, pr, vis, trainer.current_epoch, batch_idx)
 
         # W&B (best effort) + always save PNG
         try:

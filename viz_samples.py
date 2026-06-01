@@ -38,9 +38,25 @@ def to_img(t):
     return t.permute(1, 2, 0).clamp(0, 1).numpy()
 
 
+def colorize_vis(mask, vis):
+    """RGB GT: red = vis==1 (ignored by the vis>=2 loss), green = vis>=2 (supervised)."""
+    h, w = mask.shape
+    rgb = np.zeros((h, w, 3), dtype=np.float32)
+    veh = mask > 0.5
+    rgb[veh & (vis == 1)] = (1.0, 0.25, 0.25)                 # vis1 -> red
+    rgb[veh & (vis >= 2) & (vis != 255)] = (0.3, 1.0, 0.45)   # vis>=2 -> green
+    return rgb
+
+
 def gt_panels(s, key):
-    """list of (title, image2d, cmap, vmax) for the GT signals present."""
-    panels = [(f"GT {key}  front↑ left←", s[key][0].numpy(), "magma", 1.0)]
+    """list of (title, image, cmap, vmax) for the GT signals present. cmap=None -> RGB."""
+    visk = f"{key}_visibility"
+    if visk in s:
+        first = ("GT  red=vis1(ignored)  green=vis>=2   front^ left<",
+                 colorize_vis(s[key][0].numpy(), s[visk].numpy()), None, 1.0)
+    else:
+        first = (f"GT {key}  front^ left<", s[key][0].numpy(), "magma", 1.0)
+    panels = [first]
     if f"{key}_center" in s:
         panels.append(("GT center", s[f"{key}_center"][0].numpy(), "inferno", 1.0))
     if f"{key}_offset" in s:
@@ -65,7 +81,10 @@ def render(s, idx, exp, out_dir, key):
             ax.set_title(CAM_NAMES[grid[r][c]], fontsize=8); ax.axis("off")
     for j, (title, im, cmap, vmax) in enumerate(panels):
         ax = fig.add_subplot(gs[:, 3 + j])
-        ax.imshow(im, cmap=cmap, vmin=0, vmax=vmax, origin="upper")
+        if cmap is None:
+            ax.imshow(im, origin="upper")                 # RGB (visibility-colored GT)
+        else:
+            ax.imshow(im, cmap=cmap, vmin=0, vmax=vmax, origin="upper")
         ax.scatter([100], [100], c="cyan", s=16, marker="^")
         ax.set_title(title, fontsize=9); ax.axis("off")
     fig.suptitle(f"[{exp}] sample {idx:02d}  token={s['token'][:10]}…  | 6 cam  |  GT signals",
@@ -75,11 +94,11 @@ def render(s, idx, exp, out_dir, key):
     return out
 
 
-def run_model(exp):
+def run_model(exp, extra=()):
     GlobalHydra.instance().clear()
     with initialize_config_dir(version_base="1.3", config_dir=CONFIG_DIR):
         cfg = compose(config_name="config",
-                      overrides=[f"+experiment={exp}", "experiment.save_dir=/tmp/bevunify_viz/"])
+                      overrides=[f"+experiment={exp}", "experiment.save_dir=/tmp/bevunify_viz/", *extra])
         setup_config(cfg)
         dm = setup_data_module(cfg)
         scenes = dm.get_split("val", loader=False)
@@ -95,9 +114,13 @@ def run_model(exp):
 
 
 def main():
-    models = [m for m in sys.argv[1:] if m in ALL_MODELS] or ALL_MODELS
+    # usage: viz_samples.py [model ...] [hydra.overrides=...]
+    #   e.g. viz_samples.py cvt data.dataset_dir=/abs/nuscenes data.labels_dir=/abs/labels
+    args = sys.argv[1:]
+    models = [a for a in args if a in ALL_MODELS] or ALL_MODELS
+    extra = [a for a in args if "=" in a]
     for m in models:
-        run_model(m)
+        run_model(m, extra)
 
 
 if __name__ == "__main__":
