@@ -95,7 +95,7 @@ class ValVizCallback(pl.Callback):
             return
         self._emit(trainer, pl_module, batch,
                    f"val  epoch {trainer.current_epoch}  batch {batch_idx}",
-                   f"ep{trainer.current_epoch:02d}_b{batch_idx:04d}.png", "val_viz")
+                   f"ep{trainer.current_epoch:02d}_b{batch_idx:04d}.png", f"val_viz/b{batch_idx}")
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         if self.train_n <= 0 or not trainer.is_global_zero:
