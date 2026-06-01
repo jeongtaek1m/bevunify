@@ -3,5 +3,5 @@
 # Requires: pip install fairscale ; env WEIGHTS_PATH for the EfficientNet cam encoder.
 _target_: bevunify.wrappers.lara.LaRaWrapper
 key: ${key}
-repo_root: /home/jeongtae/bevseg/LaRa
+repo_root: third_party/LaRa
 config_name: train

@@ -21,7 +21,7 @@ class LaRaWrapper(nn.Module):
                  experiment="LaRa_inCamrays_outCoord"):
         super().__init__()
         self.key = key
-        add_repo_to_path(repo_root)
+        repo_root = add_repo_to_path(repo_root)
         os.environ.setdefault("WEIGHTS_PATH", "")  # CamEncode reads ${oc.env:WEIGHTS_PATH}
 
         # the experiment fills mandatory input_embeddings / query_generators.

@@ -3,6 +3,6 @@
 # then adapts batch I/O to the canonical GaussianLSS contract.
 _target_: bevunify.wrappers.cvt.CVTWrapper
 key: ${key}
-repo_root: /home/jeongtae/bevseg/cross_view_transformers
+repo_root: third_party/cross_view_transformers
 config_name: config
 center: true       # emit ${key}_center too (CVT loss uses seg + center)

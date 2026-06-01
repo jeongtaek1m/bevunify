@@ -21,7 +21,7 @@ class CVTWrapper(nn.Module):
                  experiment="cvt_nuscenes_vehicle"):
         super().__init__()
         self.key = key
-        add_repo_to_path(repo_root)
+        repo_root = add_repo_to_path(repo_root)
 
         cfg = compose_repo_cfg(
             config_dir=f"{repo_root}/config",

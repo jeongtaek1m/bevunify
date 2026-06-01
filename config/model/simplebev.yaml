@@ -4,7 +4,7 @@
 # (row=Y, col=X) frame. Verify orientation with tests/probe_orientation.py.
 _target_: bevunify.wrappers.simplebev.SimpleBEVWrapper
 key: ${key}
-repo_root: /home/jeongtae/bevseg/simple_bev
+repo_root: third_party/simple_bev
 encoder_type: res101
 Z: 200
 Y: 8

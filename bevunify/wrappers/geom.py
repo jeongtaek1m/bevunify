@@ -8,12 +8,25 @@ Most repos (LSS, LaRa, PointBeV) want the inverse rigid transform (cam -> ego):
   x_ego = R @ x_cam + t .
 """
 import sys
+from pathlib import Path
 import torch
 
+# repo root of bevunify (this file: bevunify/bevunify/wrappers/geom.py)
+BEVUNIFY_ROOT = Path(__file__).resolve().parents[2]
 
-def add_repo_to_path(repo_root: str):
+
+def resolve_repo(repo_root: str) -> str:
+    """Resolve a (possibly relative, e.g. 'third_party/PointBeV') repo path against the
+    bevunify repo root, so vendored repos work regardless of CWD."""
+    p = Path(repo_root)
+    return str(p if p.is_absolute() else BEVUNIFY_ROOT / repo_root)
+
+
+def add_repo_to_path(repo_root: str) -> str:
+    repo_root = resolve_repo(repo_root)
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
+    return repo_root
 
 
 def ego_from_cam(extrinsics: torch.Tensor):

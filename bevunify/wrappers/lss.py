@@ -21,7 +21,7 @@ class LSSWrapper(nn.Module):
     def __init__(self, key, repo_root, grid_conf, data_aug_conf, outC=1):
         super().__init__()
         self.key = key
-        add_repo_to_path(repo_root)
+        repo_root = add_repo_to_path(repo_root)
         from src.models import LiftSplatShoot  # import the class directly (avoids src.train deps)
 
         grid_conf = OmegaConf.to_container(grid_conf, resolve=True)

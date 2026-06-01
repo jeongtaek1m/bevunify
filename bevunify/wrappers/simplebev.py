@@ -27,7 +27,7 @@ class SimpleBEVWrapper(nn.Module):
         self.bounds = tuple(OmegaConf.to_container(bounds, resolve=True)
                             if OmegaConf.is_config(bounds) else bounds)
         self.axis_fix = axis_fix
-        add_repo_to_path(repo_root)
+        repo_root = add_repo_to_path(repo_root)
         from nets.segnet import Segnet
         # camera-only (no radar / lidar) — enforced explicitly
         self.net = Segnet(Z=Z, Y=Y, X=X, encoder_type=encoder_type,

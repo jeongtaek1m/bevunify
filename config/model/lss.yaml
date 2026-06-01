@@ -4,7 +4,7 @@
 # src.models.LiftSplatShoot directly to avoid it).
 _target_: bevunify.wrappers.lss.LSSWrapper
 key: ${key}
-repo_root: /home/jeongtae/bevseg/lift-splat-shoot
+repo_root: third_party/lift-splat-shoot
 outC: 1
 grid_conf:
   xbound: [-50.0, 50.0, 0.5]

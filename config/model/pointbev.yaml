@@ -4,5 +4,5 @@
 # Requires: pip install rich .
 _target_: bevunify.wrappers.pointbev.PointBeVWrapper
 key: ${key}
-repo_root: /home/jeongtae/bevseg/PointBeV
+repo_root: third_party/PointBeV
 config_name: train

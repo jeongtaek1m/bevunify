@@ -24,7 +24,7 @@ class PointBeVWrapper(nn.Module):
         super().__init__()
         self.key = key
         self.axis_fix = axis_fix
-        add_repo_to_path(repo_root)
+        repo_root = add_repo_to_path(repo_root)
         os.environ.setdefault("PROJECT_ROOT", repo_root)   # PointBeV paths use ${oc.env:PROJECT_ROOT}
 
         # Register PointBeV's custom OmegaConf resolvers (get_in_c_neck, eval, ...).

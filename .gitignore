@@ -16,3 +16,11 @@ outputs/
 data/
 *.pkl
 *.npz
+
+# vendored third-party build artifacts (rebuilt per env; sources are kept)
+third_party/**/build/
+third_party/**/*.so
+third_party/**/*.o
+third_party/**/*.egg-info/
+third_party/**/logs/
+third_party/**/wandb/

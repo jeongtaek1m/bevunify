@@ -77,6 +77,8 @@ bevunify/
 │   ├── smoke_forward.py      #   end-to-end smoke for one experiment: data -> model -> loss -> metric on 1 batch
 │   └── probe_orientation.py  #   orientation-probe scaffold
 │
+├── third_party/             #   VENDORED source repos (code + LICENSE; .git/build excluded):
+│                            #   GaussianLSS, cross_view_transformers, LaRa, lift-splat-shoot, PointBeV, simple_bev
 ├── viz/   (gitignored)       #   generated input/GT/pred PNGs
 └── logs/  (gitignored)       #   training logs, checkpoints, val_viz PNGs
 ```
@@ -119,14 +121,11 @@ grid) and confirmed by training (IoU rises only when aligned).
 
 ## Setup (prerequisites)
 
-bevunify imports the 6 source repos **in place** — clone them beside this repo and point
-`GAUSSIANLSS_ROOT` / the `repo_root` fields in `config/model/*.yaml` at them:
-
-```
-<workspace>/
-  GaussianLSS/  cross_view_transformers/  LaRa/  lift-splat-shoot/  PointBeV/  simple_bev/
-  bevunify/     <- this repo
-```
+The 6 source repos are **vendored under `third_party/`** (code + LICENSE; `.git` / build
+artifacts excluded), so a single `git clone` of this repo is self-contained for code.
+Paths are relative (`config/model/*.yaml: repo_root`, `GAUSSIANLSS_ROOT`) and resolve
+against the repo root — no editing needed. Still external: the nuScenes dataset, the
+CUDA-op builds, and pip deps below.
 
 Host env (one conda env, Python 3.8). Install PyTorch (CUDA) + the PointBeV sparse-conv
 wheel first, then the rest from `requirements.txt`:
