@@ -153,8 +153,10 @@ python verify_setup.py
 # per-model input+GT visualization
 python viz_samples.py [cvt lss ...]          # -> viz/<model>/
 
-# train (W&B per-model project bevseg-<model>; experiment.logger=csv to disable W&B)
-python -m bevunify.train +experiment=<model> trainer.devices=2
+# train. config/data paths are RELATIVE defaults -> give your server paths on the CLI.
+# (W&B per-model project bevseg-<model>; experiment.logger=csv to disable W&B)
+python -m bevunify.train +experiment=<model> trainer.devices=2 \
+    data.dataset_dir=/abs/path/nuscenes data.labels_dir=/abs/path/nuscenes/labels_aug
 
 # evaluate
 python -m bevunify.eval +experiment=<model> ckpt=<path>

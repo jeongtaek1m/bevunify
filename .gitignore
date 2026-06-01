@@ -1,26 +1,26 @@
-# python
+# python (junk anywhere)
 __pycache__/
 *.py[cod]
 *.egg-info/
+*.egg
 .ipynb_checkpoints/
 
-# run artifacts
-logs/
-viz/
-wandb/
-outputs/
-*.ckpt
-*.pth
+# build artifacts (rebuilt per env; sources are kept)
+build/
+dist/
+*.so
+*.o
 
-# dataset blobs only (NOT python `data/` packages or config/data/ — those are code).
-# the nuScenes dataset lives outside the repo (config points to an absolute path).
-*.pkl
-*.npz
+# run outputs — REPO ROOT ONLY (anchored, so vendored code dirs of these names are kept)
+/logs/
+/viz/
+/wandb/
+/outputs/
 
-# vendored third-party build artifacts (rebuilt per env; sources are kept)
-third_party/**/build/
-third_party/**/*.so
-third_party/**/*.o
-third_party/**/*.egg-info/
+# vendored repos' own run artifacts (their example logs etc.)
 third_party/**/logs/
 third_party/**/wandb/
+third_party/**/outputs/
+
+# NOTE: do NOT add a bare `data/` — it would drop config/data/ and the python
+# */data/ subpackages. The nuScenes dataset lives outside the repo (absolute path).
