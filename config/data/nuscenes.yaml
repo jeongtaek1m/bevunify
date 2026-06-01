@@ -1,0 +1,44 @@
+defaults:
+  - img_params: scale_0_3
+
+# 'nuscenes_toggle' is registered by bevunify.common; it is the GaussianLSS
+# 'nuscenes_generated' pipeline plus per-model center/offset/visibility toggles.
+dataset: 'nuscenes_toggle'
+version: 'v1.0-trainval'                 # 'v1.0-mini' for debugging
+
+# GaussianLSS GT. labels_aug adds per-camera ego_from_cam (cam->ego) via bevunify.datagen.
+dataset_dir: /data/datasets/nuscenes
+labels_dir: /data/datasets/nuscenes/labels_aug
+
+# used to generate dataset (kept for parity with host generate_data.py)
+cameras: [[0, 1, 2, 3, 4, 5]]
+
+# BEV grid — the canonical 200x200 / +-50m / 0.5m-per-pixel frame shared by every model
+bev:
+  h: 200
+  w: 200
+  h_meters: 100.0
+  w_meters: 100.0
+  offset: 0.0
+
+# input image parameters
+image:
+  h: 224
+  w: 480
+  top_crop: 46
+
+bev_aug_conf: [30., 20., 0., 20., 0., 0.]
+
+# GT family
+vehicle: True
+ped: False
+
+# camera parameterisation:
+#   False -> batch carries 'lidar2img' (GaussianLSS native)
+#   True  -> batch carries separate 'intrinsics' + 'extrinsics' (needed by most wrappers)
+split_intrin_extrin: False
+
+augment_img: False
+augment_bev: False
+
+# gt_center / gt_offset / gt_visibility are supplied by the selected `gt/` preset

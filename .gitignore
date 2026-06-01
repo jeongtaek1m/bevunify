@@ -12,8 +12,8 @@ outputs/
 *.ckpt
 *.pth
 
-# data / labels (never commit datasets)
-data/
+# dataset blobs only (NOT python `data/` packages or config/data/ — those are code).
+# the nuScenes dataset lives outside the repo (config points to an absolute path).
 *.pkl
 *.npz
 
