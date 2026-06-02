@@ -1,7 +1,12 @@
 # @package _global_
-# DSPE (IROS2024 robust-CVT) published recipe: AdamW lr=1.2e-2 + OneCycleLR, 50 epochs,
-# grad_clip 5.0. lr was tuned for effective batch ~32 (paper: 4/GPU x 8 GPU); run at
-# 2 GPU x batch 16 = eff 32 to match. NO extrinsic-noise training aug (paper-faithful).
+# DSPE (IROS2024 robust-CVT) recipe.
+#   - 50 epochs        : from the PAPER (IV.B "batch size of 4 per GPU spanning 50 epochs").
+#   - AdamW + OneCycle : from the PAPER (no LR value given there).
+#   - lr 1.2e-2, wd 1e-7, OneCycle div10/pct0.3/final10, grad_clip 5.0 : from the iros2024
+#     CODE (config/config.yaml) — the paper does NOT state a numeric LR.
+# Per-GPU batch is bevunify's default 16 (same as CVT; not set here). Paper's effective
+# batch ~32 (4/GPU x 8 GPU) is matched by running on 2 GPUs (16 x 2). Trained CLEAN
+# (augmentation: none) — extrinsic noise is an EVAL-time robustness test, not a train aug.
 optimizer:
   _target_: torch.optim.AdamW
   lr: 1.2e-2

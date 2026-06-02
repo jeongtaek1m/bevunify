@@ -24,3 +24,6 @@ third_party/**/outputs/
 
 # NOTE: do NOT add a bare `data/` — it would drop config/data/ and the python
 # */data/ subpackages. The nuScenes dataset lives outside the repo (absolute path).
+
+# local tmux launch helpers (server-specific abs paths)
+/run_*.sh

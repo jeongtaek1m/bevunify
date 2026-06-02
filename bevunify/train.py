@@ -61,8 +61,15 @@ def main(cfg):
     callbacks = [
         ModelSummary(max_depth=2),
         LearningRateMonitor(logging_interval="epoch"),
-        ModelCheckpoint(save_weights_only=True, filename="last",
-                        monitor="val/metrics/mIoU", mode="max"),
+        # full state (optimizer/scheduler/epoch) so `trainer.fit(ckpt_path=...)` can
+        # actually resume — save_weights_only=True breaks resume (KeyError on optim state).
+        # dirpath fixed to a uuid-named folder (not the wandb run-id default) so
+        # maybe_resume_training's glob **/{uuid}/checkpoints/*.ckpt finds it on relaunch.
+        ModelCheckpoint(
+            dirpath=str(Path(cfg.experiment.save_dir) / cfg.experiment.project
+                        / str(cfg.experiment.uuid) / "checkpoints"),
+            save_weights_only=False, filename="last",
+            monitor="val/metrics/mIoU", mode="max"),
         # 6 cam | GT | pred every N val steps (val is not shuffled -> stable across epochs)
         ValVizCallback(key=cfg.key,
                        every_n_steps=cfg.experiment.get("val_viz_interval", 100),
