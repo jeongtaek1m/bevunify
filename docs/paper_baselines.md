@@ -91,9 +91,13 @@ Target = paper **Setting 2 (vis ≥ 2)** at 224×480. "Reproduced" = our best va
 † LSS native setting is 128×352; ours is 224×480 `vis2` — a loose comparison, but it clearly
 clears the paper figure.
 
-> ⚠️ **Stability note:** LSS/CVT runs have been killed mid-training **3×** on this shared
-> node (no Python traceback — likely system OOM among 116 users). For unattended training,
-> add an auto-restart/resume watchdog or use a less-contended node.
+> ⚠️ **Stability note:** the LSS/CVT runs were repeatedly killed mid-training with **no
+> Python traceback** (CVT's last death was *during validation*) — a DDP-deadlock signature
+> rather than a clear OOM. The updated `bevunify/viz_callback.py` targets exactly this: per
+> its own comments, a **rank-0-only forward** in the viz callback desyncs NCCL collectives
+> (SyncBatchNorm `all_reduce`) and trips the DDP ~30-min watchdog; it now forwards on **all
+> ranks** (only rank 0 emits the viz). Re-run with the updated callback; if kills persist,
+> also rule out node OOM.
 
 ---
 
