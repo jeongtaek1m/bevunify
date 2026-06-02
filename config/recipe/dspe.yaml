@@ -1,0 +1,21 @@
+# @package _global_
+# DSPE (IROS2024 robust-CVT) published recipe: AdamW lr=1.2e-2 + OneCycleLR, 50 epochs,
+# grad_clip 5.0. lr was tuned for effective batch ~32 (paper: 4/GPU x 8 GPU); run at
+# 2 GPU x batch 16 = eff 32 to match. NO extrinsic-noise training aug (paper-faithful).
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 1.2e-2
+  weight_decay: 1e-7
+scheduler:
+  div_factor: 10
+  pct_start: 0.3
+  final_div_factor: 10
+  max_lr: ${optimizer.lr}
+  total_steps: ${trainer.max_steps}
+  cycle_momentum: False
+  anneal_strategy: "cos"
+  interval: step
+trainer:
+  max_steps: -1
+  max_epochs: 50
+  gradient_clip_val: 5.0

@@ -1,0 +1,22 @@
+# @package _global_
+# DSPE — IROS2024 robust multi-camera BEV (Dual-Space PE + Image-Perception PE).
+# python -m bevunify.train +experiment=dspe trainer.devices=2
+# Paper-faithful: trained CLEAN (no extrinsic-noise aug); robustness is architectural.
+# Extrinsic-noise is applied only at EVAL to measure robustness (eval-time perturbation).
+defaults:
+  - override /model: dspe
+  - override /gt: seg_center           # seg + center (CVT-style auxiliary center head)
+  - override /loss: seg_focal_center   # paper: focal seg + focal center (weight 0.1)
+  - override /recipe: dspe             # AdamW 1.2e-2 + OneCycle, 50 epochs
+  - override /metrics: bev_metrics
+  - override /augmentation: none       # paper-faithful: NO training-time extrinsic aug
+
+data:
+  split_intrin_extrin: True            # model needs intrinsics + extrinsics
+  vehicle: True
+
+experiment:
+  project: bevseg-dspe
+
+key: vehicle
+val_only: False

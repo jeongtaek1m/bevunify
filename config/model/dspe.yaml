@@ -1,0 +1,48 @@
+# DSPE = IROS2024 robust-CVT: Dual-Space Positional Encoding (local K^-1 + global
+# extrinsic) + Image-Perception PE + self-attn/cross-view x3. Vendored standalone model
+# at third_party/dspe (dspe.model.*). Same I/O as CVT (batch{image,intrinsics,extrinsics}
+# -> {vehicle, vehicle_center}); normalizes images INTERNALLY, so the loader feeds [0,1].
+# Instantiated directly (no wrapper) like the gaussianlss host model.
+_target_: dspe.model.cvt.CrossViewTransformer
+
+dim_last: 64
+
+# literal keys — OmegaConf does NOT interpolate ${key} into dict KEYS (key=vehicle fixed)
+outputs:
+  vehicle: [0, 1]
+  vehicle_center: [1, 2]
+
+encoder:
+  _target_: dspe.model.encoder.Encoder
+  dim: 128
+  scale: 1.0
+  middle: [2, 2, 2]                 # must match the 3 backbone output scales
+  backbone:
+    _target_: dspe.model.backbones.efficientnet.EfficientNetExtractor
+    model_name: efficientnet-b4
+    layer_names: ['reduction_2', 'reduction_3', 'reduction_4']
+    image_height: ${data.image.h}   # tracks the central resolution knob
+    image_width: ${data.image.w}
+  cross_view:
+    heads: 4
+    dim_head: 32
+    qkv_bias: True
+    skip: True
+    no_image_features: False
+    image_height: ${data.image.h}
+    image_width: ${data.image.w}
+  bev_embedding:
+    sigma: 1.0
+    bev_height: ${data.bev.h}
+    bev_width: ${data.bev.w}
+    h_meters: ${data.bev.h_meters}
+    w_meters: ${data.bev.w_meters}
+    offset: ${data.bev.offset}
+    decoder_blocks: ${model.decoder.blocks}
+
+decoder:
+  _target_: dspe.model.decoder.Decoder
+  dim: ${model.encoder.dim}
+  blocks: [128, 128, 64]
+  residual: True
+  factor: 2
