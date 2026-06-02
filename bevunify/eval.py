@@ -75,12 +75,23 @@ CTS_CONDITIONS = {
 # ── Shared inference ──────────────────────────────────────────────────────────
 
 @torch.no_grad()
-def run_inference(model, loader, threshold=0.5):
-    """Returns (iou_vis_gt2, iou_vis_all). Vehicle channel only, sigmoid@thr."""
+def run_inference(model, loader, threshold=0.5, viz_dir=None, viz_tag=None):
+    """Returns (iou_vis_gt2, iou_vis_all). Vehicle channel only, sigmoid@thr.
+
+    viz_dir + viz_tag (optional): if set, save one 6cam|GT|Pred PNG per batch
+    (batch[0]) into viz_dir/<viz_tag>/b{idx:04d}.png. At large val_batch_size only
+    one sample per batch is preserved by design — fold this into the inference loop
+    so no extra forward pass is needed.
+    """
     eps = 1e-9
     tp_v = fp_v = fn_v = 0.0
     tp_a = fp_a = fn_a = 0.0
-    for batch in loader:
+    save_viz = viz_dir is not None and viz_tag is not None
+    if save_viz:
+        viz_sub = Path(viz_dir) / viz_tag
+        viz_sub.mkdir(parents=True, exist_ok=True)
+
+    for batch_idx, batch in enumerate(loader):
         batch_cuda = {k: (v.cuda(non_blocking=True) if torch.is_tensor(v) else v) for k, v in batch.items()}
         pred = model(batch_cuda)
         logit = pred["vehicle"] if "vehicle" in pred else pred["bev"]
@@ -101,9 +112,36 @@ def run_inference(model, loader, threshold=0.5):
         fp_a += (pred_bin * (1 - gt_bin)).sum().item()
         fn_a += ((1 - pred_bin) * gt_bin).sum().item()
 
+        if save_viz:
+            _save_viz_one(viz_sub / f"b{batch_idx:04d}.png", batch, prob[0].numpy(),
+                          gt[0].numpy(), vis[0].numpy(), title=f"{viz_tag}  b{batch_idx}")
+
     iou_v = tp_v / (tp_v + fp_v + fn_v + eps)
     iou_a = tp_a / (tp_a + fp_a + fn_a + eps)
     return iou_v, iou_a
+
+
+def _save_viz_one(out_path, batch, prob, gt, vis, title=""):
+    """Save one 6cam|GT|Pred PNG for batch[0]. Same layout as the old _viz_subset."""
+    import matplotlib; matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    mask = (vis >= 2).astype(np.float32)
+    imgs = batch["image"][0].permute(0, 2, 3, 1).cpu().numpy()
+    imgs = np.clip((imgs - imgs.min()) / max(imgs.max() - imgs.min(), 1e-9), 0, 1)
+    fig = plt.figure(figsize=(22, 9))
+    gs = fig.add_gridspec(2, 5, width_ratios=[1, 1, 1, 1.7, 1.7])
+    titles = ["FL", "F", "FR", "BL", "B", "BR"]
+    for i in range(6):
+        ax = fig.add_subplot(gs[i // 3, i % 3])
+        ax.imshow(imgs[i]); ax.axis("off"); ax.set_title(titles[i], fontsize=8)
+    ax_gt = fig.add_subplot(gs[:, 3]); ax_pred = fig.add_subplot(gs[:, 4])
+    ax_gt.imshow(gt * mask, cmap="gray", vmin=0, vmax=1); ax_gt.axis("off")
+    ax_gt.set_title("GT (vis>=2)", fontsize=10)
+    ax_pred.imshow(prob, cmap="plasma", vmin=0, vmax=1); ax_pred.axis("off")
+    ax_pred.set_title("Pred", fontsize=10)
+    fig.suptitle(title, fontsize=11)
+    fig.savefig(out_path, dpi=70, bbox_inches="tight")
+    plt.close(fig)
 
 
 def _ds_iter(loader):
@@ -218,52 +256,6 @@ def _build_sedan_ext_map(sedan_labels_dir):
     return {ch: np.array(e, dtype=np.float32) for ch, e in zip(s.get("cam_channels", []), s["extrinsics"])}
 
 
-# ── Viz (shared by vr & cts) ──────────────────────────────────────────────────
-
-@torch.no_grad()
-def _viz_subset(model, loader, viz_dir, viz_cfgs, mutate_fn, samples_per_scene=5):
-    import matplotlib; matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    viz_dir = Path(viz_dir); viz_dir.mkdir(parents=True, exist_ok=True)
-
-    keep = []
-    for ds in _ds_iter(loader):
-        n = len(ds)
-        step = max(1, n // samples_per_scene)
-        keep.extend((ds, i) for i in list(range(0, n, step))[:samples_per_scene])
-
-    for cfg_item in viz_cfgs:
-        mutate_fn(cfg_item)
-        for ds, idx in keep:
-            sample = ds[idx]
-            batch_cuda = {k: (v.unsqueeze(0).cuda() if torch.is_tensor(v) else v)
-                          for k, v in sample.items()}
-            pred = model(batch_cuda)
-            logit = pred["vehicle"] if "vehicle" in pred else pred["bev"]
-            prob = torch.sigmoid(logit[0, 0]).cpu().numpy()
-            gt = sample["vehicle"][0].cpu().numpy()
-            vis = sample["vehicle_visibility"].cpu().numpy()
-            mask = (vis >= 2).astype(np.float32)
-            imgs = sample["image"].permute(0, 2, 3, 1).cpu().numpy()
-            imgs = np.clip((imgs - imgs.min()) / max(imgs.max() - imgs.min(), 1e-9), 0, 1)
-
-            fig = plt.figure(figsize=(22, 9))
-            gs = fig.add_gridspec(2, 5, width_ratios=[1, 1, 1, 1.7, 1.7])
-            titles = ["FL", "F", "FR", "BL", "B", "BR"]
-            for i in range(6):
-                ax = fig.add_subplot(gs[i // 3, i % 3])
-                ax.imshow(imgs[i]); ax.axis("off"); ax.set_title(titles[i], fontsize=8)
-            ax_gt = fig.add_subplot(gs[:, 3]); ax_pred = fig.add_subplot(gs[:, 4])
-            ax_gt.imshow(gt * mask, cmap="gray", vmin=0, vmax=1); ax_gt.axis("off")
-            ax_gt.set_title("GT (vis>=2)", fontsize=10)
-            ax_pred.imshow(prob, cmap="plasma", vmin=0, vmax=1); ax_pred.axis("off")
-            ax_pred.set_title("Pred", fontsize=10)
-            fig.suptitle(cfg_item.get("name", ""), fontsize=11)
-            fig.savefig(viz_dir / f'{sample["token"]}_{cfg_item["name"]}.png', dpi=70)
-            plt.close(fig)
-    log.info(f"[eval] viz saved → {viz_dir}")
-
-
 # ── Protocol drivers ──────────────────────────────────────────────────────────
 
 def _run_normal(cfg, model_module, data_module):
@@ -281,10 +273,12 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
                           eval_cfg.conditions, eval_cfg.protocols)
     log.info(f"[eval/vr] total configs: {len(grid)}")
 
+    viz_root = (out_dir / "viz") if eval_cfg.viz_enable else None
     results = []
     for cfg_item in tqdm(grid, desc="VR configs"):
         _mutate_vr(val_loader, cfg_item, eval_cfg.viewpoint_metadata_path)
-        iou_v, iou_a = run_inference(model, val_loader, threshold=eval_cfg.threshold)
+        iou_v, iou_a = run_inference(model, val_loader, threshold=eval_cfg.threshold,
+                                     viz_dir=viz_root, viz_tag=cfg_item["name"])
         rec = dict(cfg_item); rec["iou_vis_gt2"] = iou_v; rec["iou_vis_all"] = iou_a
         results.append(rec)
         log.info(f"  [{cfg_item['name']}] vis>=2={iou_v:.4f} all={iou_a:.4f}")
@@ -296,23 +290,8 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
     log.info("[eval/vr] === mVRS summary ===")
     for k, v in tables.items():
         log.info(f"  {k}: {v:.4f}")
-
-    if eval_cfg.viz_enable:
-        viz_cfgs = [dict(name="Normal", condition="Normal", variant=None, axis=None, mag=None,
-                         protocol="clean", target_camera=None)]
-        for ax in eval_cfg.viz_axes:
-            for mg in eval_cfg.viz_mags:
-                viz_cfgs.append(dict(
-                    name=f"VR_perCam_F_{ax}{mg:+d}",
-                    condition="VR", variant=_variant_key(ax, mg), axis=ax, mag=mg,
-                    protocol="per_cam", target_camera=eval_cfg.viz_target_camera,
-                ))
-        try:
-            _viz_subset(model, val_loader, out_dir / "viz", viz_cfgs,
-                        mutate_fn=lambda ci: _mutate_vr(val_loader, ci, eval_cfg.viewpoint_metadata_path),
-                        samples_per_scene=eval_cfg.viz_samples_per_scene)
-        except Exception as e:
-            log.warning(f"[eval/vr] viz failed: {e}")
+    if viz_root is not None:
+        log.info(f"[eval/vr] viz saved per config → {viz_root}/<config>/b####.png")
 
 
 def _run_cts(cfg, eval_cfg, model_module, data_module, out_dir):
@@ -324,10 +303,13 @@ def _run_cts(cfg, eval_cfg, model_module, data_module, out_dir):
     data_module.setup("validate")
     val_loader = data_module.val_dataloader()
 
+    viz_root = (out_dir / "viz") if eval_cfg.viz_enable else None
     results = {}
     for cond in eval_cfg.conditions:
         _mutate_cts(val_loader, cond, eval_cfg.target_platform, ext_override)
-        iou_v, iou_a = run_inference(model, val_loader, threshold=eval_cfg.threshold)
+        iou_v, iou_a = run_inference(model, val_loader, threshold=eval_cfg.threshold,
+                                     viz_dir=viz_root,
+                                     viz_tag=f"{eval_cfg.target_platform}_{cond}")
         results[cond] = dict(iou_vis_gt2=iou_v, iou_vis_all=iou_a)
         log.info(f"  [{cond}] vis>=2={iou_v:.4f} all={iou_a:.4f}")
 
@@ -347,15 +329,8 @@ def _run_cts(cfg, eval_cfg, model_module, data_module, out_dir):
         ratio = f"  CTS={r.get('cts_vis_gt2', float('nan')):.4f}" if "cts_vis_gt2" in r else ""
         log.info(f"  {cond:>6}: vis>=2={r['iou_vis_gt2']:.4f} all={r['iou_vis_all']:.4f}{ratio}{marker}")
 
-    if eval_cfg.viz_enable:
-        viz_cfgs = [dict(name=f"CTS_{c}", condition=c) for c in eval_cfg.conditions]
-        try:
-            _viz_subset(model, val_loader, out_dir / "viz", viz_cfgs,
-                        mutate_fn=lambda ci: _mutate_cts(val_loader, ci["condition"],
-                                                         eval_cfg.target_platform, ext_override),
-                        samples_per_scene=eval_cfg.viz_samples_per_scene)
-        except Exception as e:
-            log.warning(f"[eval/cts] viz failed: {e}")
+    if viz_root is not None:
+        log.info(f"[eval/cts] viz saved per condition → {viz_root}/<platform>_<cond>/b####.png")
 
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
@@ -366,29 +341,24 @@ def _default_eval_cfg(protocol, cfg):
         return OmegaConf.create({})
     if protocol == "vr":
         return OmegaConf.create(dict(
-            out_dir="${hydra:runtime.cwd}/eval_results/vr_${experiment.uuid}",
+            out_dir="${hydra:runtime.cwd}/eval_results/${experiment.project}/vr_${experiment.uuid}",
             axes=["pitch", "yaw", "roll"],
             magnitudes=[-20, -16, -12, -8, -4, 4, 8, 12, 16, 20],
             conditions=["ER", "VR", "CR"],
             protocols=["per_cam", "all_cam"],
             threshold=0.5,
-            viz_enable=True,
-            viz_samples_per_scene=5,
-            viz_axes=["pitch", "yaw", "roll"],
-            viz_mags=[-20, -8, 4, 20],
-            viz_target_camera="CAM_FRONT",
+            viz_enable=True,                       # per-batch viz (batch[0]) → viz/<cfg>/b####.png
             viewpoint_metadata_path=cfg.data.get("viewpoint_metadata_path", None),
         ))
     if protocol == "cts":
         return OmegaConf.create(dict(
-            out_dir="${hydra:runtime.cwd}/eval_results/cts_${experiment.uuid}",
+            out_dir="${hydra:runtime.cwd}/eval_results/${experiment.project}/cts_${experiment.uuid}",
             target_platform="suv",                 # 'suv' | 'bus'
             conditions=["NORMAL", "EXT", "IMG", "CAL"],
             threshold=0.5,
             oracle_iou=None,
             sedan_labels_dir=None,
-            viz_enable=False,
-            viz_samples_per_scene=5,
+            viz_enable=True,                       # per-batch viz (batch[0]) → viz/<plat>_<cond>/b####.png
         ))
     raise ValueError(f"unknown eval.protocol={protocol!r}")
 

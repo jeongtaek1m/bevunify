@@ -27,3 +27,9 @@ third_party/**/outputs/
 
 # local tmux launch helpers (server-specific abs paths)
 /run_*.sh
+
+# carla_data_toolkit generated visualizations (large PNGs, regenerated on demand)
+bevunify/carla_data_toolkit/viz/
+
+# eval results (per-model JSON + viz; large, kept local only)
+/eval_results/
