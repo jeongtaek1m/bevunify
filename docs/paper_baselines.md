@@ -16,8 +16,8 @@ The two standard evaluation "settings" map **directly** onto the bevunify metric
 
 | bevunify metric | paper setting | meaning |
 |---|---|---|
+| `IoU_vehicle@0.5_vis2`   | **Setting 2** ⟵ standard headline | only vehicles with visibility > 40% (= nuScenes visibility token ≥ 2) |
 | `IoU_vehicle@0.5_visall` | **Setting 1** | all annotated vehicles (no visibility filter) |
-| `IoU_vehicle@0.5_vis2`   | **Setting 2** | only vehicles with visibility > 40% (= nuScenes visibility token ≥ 2) |
 
 So the bevunify validation curves can be read straight against the tables below.
 
@@ -28,17 +28,21 @@ So the bevunify validation curves can be read straight against the tables below.
 Numbers as re-evaluated under the **unified protocol** in the GaussianLSS paper (Table 1)
 and PointBeV paper (Table 1) — the two cross-check identically.
 
-| Model | in bevunify | Setting 1 (vis-all) | Setting 2 (vis≥2) |
+> **Setting 2 (vis ≥ 2) is the standard headline** in this literature — nearly every
+> BEV-seg paper reports this visibility-filtered number as its main result. It maps to
+> bevunify's `IoU_vehicle@0.5_vis2`, so compare your runs against the **bold** column.
+
+| Model | in bevunify | **Setting 2 (vis≥2)** ⟵ standard | Setting 1 (vis-all) |
 |---|:--:|:--:|:--:|
-| **GaussianLSS** (host) | ✓ `gaussianlss` | **38.3** | **42.8** |
-| **PointBeV** (EfficientNet-b4, single-frame) | ✓ `pointbev` | 38.7 | 44.0 |
-| **Simple-BEV** (RGB-only) | ✓ `simplebev` | 36.9 | 43.0 |
-| **LaRa** | ✓ `lara` | 35.4 | 38.9 |
-| **CVT** (Cross-View Transformers) | ✓ `cvt` | 31.4 | 36.0 |
+| **GaussianLSS** (host) | ✓ `gaussianlss` | **42.8** | 38.3 |
+| **PointBeV** (EfficientNet-b4, single-frame) | ✓ `pointbev` | **44.0** | 38.7 |
+| **Simple-BEV** (RGB-only) | ✓ `simplebev` | **43.0** | 36.9 |
+| **LaRa** | ✓ `lara` | **38.9** | 35.4 |
+| **CVT** (Cross-View Transformers) | ✓ `cvt` | **36.0** | 31.4 |
 | **Lift-Splat-Shoot** | ✓ `lss` | — (see note) | — (see note) |
-| *FIERY (static)* — reference | – | 35.8 | 39.8 |
-| *BEVFormer* — reference | – | 35.8 | 42.0 |
-| *BAEFormer* — reference | – | 36.0 | 38.9 |
+| *FIERY (static)* — reference | – | 39.8 | 35.8 |
+| *BEVFormer* — reference | – | 42.0 | 35.8 |
+| *BAEFormer* — reference | – | 38.9 | 36.0 |
 
 > **LSS note:** Lift-Splat-Shoot (ECCV 2020) predates this benchmark and is **not**
 > listed in the modern 224×480 Setting-1/2 tables. Its own paper reports **vehicle
@@ -48,13 +52,13 @@ and PointBeV paper (Table 1) — the two cross-check identically.
 
 ### Higher resolution (448×800) — for reference
 
-| Model | Setting 1 | Setting 2 |
+| Model | **Setting 2 (vis≥2)** ⟵ standard | Setting 1 (vis-all) |
 |---|:--:|:--:|
-| GaussianLSS | 40.6 | 46.1 |
-| PointBeV (EN-b4) | 42.1 | 47.6 |
-| Simple-BEV | 40.9 | 44.9 |
-| CVT | 32.5 | 37.7 |
-| BEVFormer | 39.0 | 45.5 |
+| GaussianLSS | **46.1** | 40.6 |
+| PointBeV (EN-b4) | **47.6** | 42.1 |
+| Simple-BEV | **44.9** | 40.9 |
+| CVT | **37.7** | 32.5 |
+| BEVFormer | **45.5** | 39.0 |
 
 bevunify currently runs at **224×480**, so compare against the 224×480 table above.
 
