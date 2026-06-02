@@ -1,0 +1,144 @@
+# Paper baselines — nuScenes vehicle BEV segmentation
+
+Reference IoU numbers from each model's paper, for comparing the bevunify runs against
+the literature. Compiled 2026-06-02.
+
+## Why these numbers are comparable
+
+bevunify trains/evaluates every model on **one** GaussianLSS GT at:
+
+- BEV grid **100 m × 100 m @ 0.5 m/px → 200×200**, ego-centric
+- input **224×480**
+- metric **IoU@0.5**, reported at **vis≥2** and **vis-all**
+
+This is exactly the protocol the modern BEV-seg papers use for their comparison tables.
+The two standard evaluation "settings" map **directly** onto the bevunify metrics:
+
+| bevunify metric | paper setting | meaning |
+|---|---|---|
+| `IoU_vehicle@0.5_visall` | **Setting 1** | all annotated vehicles (no visibility filter) |
+| `IoU_vehicle@0.5_vis2`   | **Setting 2** | only vehicles with visibility > 40% (= nuScenes visibility token ≥ 2) |
+
+So the bevunify validation curves can be read straight against the tables below.
+
+---
+
+## Main comparison — vehicle IoU, 224×480, 100×100 m @ 0.5 m (200×200)
+
+Numbers as re-evaluated under the **unified protocol** in the GaussianLSS paper (Table 1)
+and PointBeV paper (Table 1) — the two cross-check identically.
+
+| Model | in bevunify | Setting 1 (vis-all) | Setting 2 (vis≥2) |
+|---|:--:|:--:|:--:|
+| **GaussianLSS** (host) | ✓ `gaussianlss` | **38.3** | **42.8** |
+| **PointBeV** (EfficientNet-b4, single-frame) | ✓ `pointbev` | 38.7 | 44.0 |
+| **Simple-BEV** (RGB-only) | ✓ `simplebev` | 36.9 | 43.0 |
+| **LaRa** | ✓ `lara` | 35.4 | 38.9 |
+| **CVT** (Cross-View Transformers) | ✓ `cvt` | 31.4 | 36.0 |
+| **Lift-Splat-Shoot** | ✓ `lss` | — (see note) | — (see note) |
+| *FIERY (static)* — reference | – | 35.8 | 39.8 |
+| *BEVFormer* — reference | – | 35.8 | 42.0 |
+| *BAEFormer* — reference | – | 36.0 | 38.9 |
+
+> **LSS note:** Lift-Splat-Shoot (ECCV 2020) predates this benchmark and is **not**
+> listed in the modern 224×480 Setting-1/2 tables. Its own paper reports **vehicle
+> IoU 32.07** (official repo: **33.03**) at the LSS-native setting (128×352 input,
+> 100×100 m @ 0.5 m). Treat it as an approximate floor; the bevunify run re-trains LSS
+> at 224×480, so its result is only loosely comparable to the 32.07 figure.
+
+### Higher resolution (448×800) — for reference
+
+| Model | Setting 1 | Setting 2 |
+|---|:--:|:--:|
+| GaussianLSS | 40.6 | 46.1 |
+| PointBeV (EN-b4) | 42.1 | 47.6 |
+| Simple-BEV | 40.9 | 44.9 |
+| CVT | 32.5 | 37.7 |
+| BEVFormer | 39.0 | 45.5 |
+
+bevunify currently runs at **224×480**, so compare against the 224×480 table above.
+
+---
+
+## Per-model detail
+
+### GaussianLSS  *(host model)*
+- Paper: *Toward Real-world BEV Perception: Depth Uncertainty Estimation via Gaussian Splatting* (arXiv:2504.01957).
+- Vehicle IoU @224×480: **38.3** (Setting 1) / **42.8** (Setting 2). @448×800: 40.6 / 46.1.
+- "SOTA among 2D-unprojection methods, competitive with 3D-projection methods."
+
+### PointBeV
+- Paper: *PointBeV: A Sparse Approach to BeV Predictions* (CVPR 2024, arXiv:2312.00703).
+- Vehicle IoU @224×480 (EN-b4, single-frame): **38.7** / **44.0**. Temporal (-T): 39.9 / 44.7.
+- bevunify uses the EfficientNet-b4 single-frame variant.
+
+### Simple-BEV
+- Paper: *Simple-BEV: What Really Matters for Multi-Sensor BEV Perception?* (ICRA 2023, arXiv:2206.07959).
+- Vehicle IoU @224×480 (RGB-only): **36.9** / **43.0**. Own paper highlights **47.4** RGB-only at higher res (448×800+), and 55.7 with radar — not the 224×480 regime bevunify uses.
+
+### LaRa
+- Paper: *LaRa: Latents and Rays for Multi-Camera BEV Semantic Segmentation* (CoRL 2022, arXiv:2206.13294).
+- Vehicle IoU @224×480: **35.4** (Setting 1) / **38.9** (Setting 2).
+
+### CVT (Cross-View Transformers)
+- Paper: *Cross-view Transformers for real-time Map-view Semantic Segmentation* (CVPR 2022 Oral, arXiv:2205.02833).
+- Vehicle IoU @224×480: **31.4** / **36.0** (re-evaluated under unified protocol). @448×800: 32.5 / 37.7.
+- Training in the official repo: batch 4/GPU × 4 GPU = **effective batch 16**, AdamW + one-cycle (lr 4e-3), 30 epochs.
+
+### Lift-Splat-Shoot (LSS)
+- Paper: *Lift, Splat, Shoot* (ECCV 2020, arXiv:2008.05711).
+- Vehicle IoU **32.07** (paper) / **33.03** (repo), LSS-native setting (128×352). Not in the 224×480 Setting-1/2 tables.
+
+---
+
+## ⚠️ "Setting 1/2" means different things across papers
+
+The main table above uses the **GaussianLSS / PointBeV convention** (the one bevunify
+follows): both settings are **100×100 m @ 0.5 m (200×200), 224×480**, and the split is
+**visibility**:
+- Setting 1 = no visibility filter (all vehicles) = bevunify `vis-all`
+- Setting 2 = visibility > 40 % (token ≥ 2)        = bevunify `vis2`
+
+**CVT's own paper reuses the same words for different GRIDS (not visibility):**
+- CVT "Setting 1" = **100 m × 50 m @ 0.25 m** (Roddick et al. / PON grid) → CVT **37.5**
+- CVT "Setting 2" = **100 m × 100 m @ 0.5 m** (Philion & Fidler / LSS grid) → CVT **36.0**
+- CVT native input = **224×448**.
+
+CVT's "Setting 2" grid *is* the grid the main table uses, and its 36.0 lines up with the
+unified Setting-2 (vis > 40 %) CVT = 36.0. So when reading any BEV-seg table, always check
+whether "Setting 1/2" refers to **visibility** (GaussianLSS/PointBeV/LaRa/Simple-BEV) or to
+**grid range** (CVT/PON/Roddick).
+
+## Native paper headline numbers (NOT the unified 224×480 protocol)
+
+What each paper reports in *its own* setting — useful context, but **not** apples-to-apples
+with the main table or with bevunify.
+
+| Model | native vehicle IoU | input res | grid | visibility | note |
+|---|:--:|:--:|:--:|:--:|---|
+| Simple-BEV | **~47.4** RGB-only (up to 49.3) | 448×800 → 672×1200 | 100×100 @ 0.5 | > 40 % | +1 m centroid offset; higher-res than bevunify (224×480) |
+| CVT | **37.5** (S1) / **36.0** (S2) | 224×448 | 100×50@0.25 / 100×100@0.5 | filter | own "Setting 1/2" = **grids** (see above) |
+| LSS | **32.07** (paper) / **33.03** (repo) | 128×352 | 100×100 @ 0.5 | — | ECCV'20; predates the 224×480 tables |
+| LaRa | **38.9** | 224×480 | 100×100 @ 0.5 | > 40 % | same as unified table |
+| PointBeV | **44.0** (EN-b4) | 224×480 | 100×100 @ 0.5 | > 40 % | defines the unified protocol |
+| GaussianLSS | **42.8** | 224×480 | 100×100 @ 0.5 | > 40 % | host; defines the unified protocol |
+
+> Takeaway for bevunify: everything is trained/eval'd at **224×480, 100×100 @ 0.5 m**, so
+> the **main table** (224×480 Setting 1/2) is the right comparison. Simple-BEV's 47.4 and
+> the 448×800 numbers are higher only because of **higher input resolution**, not a better
+> setting per se.
+
+---
+
+## Sources
+- GaussianLSS — https://arxiv.org/html/2504.01957v1
+- PointBeV — https://openaccess.thecvf.com/content/CVPR2024/papers/Chambon_PointBeV_A_Sparse_Approach_for_BeV_Predictions_CVPR_2024_paper.pdf · https://ar5iv.labs.arxiv.org/html/2312.00703
+- Simple-BEV — https://simple-bev.github.io/simple_bev_sep30.pdf
+- LaRa — https://arxiv.org/pdf/2206.13294
+- CVT — https://arxiv.org/pdf/2205.02833 · https://github.com/bradyz/cross_view_transformers
+- Lift-Splat-Shoot — https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123590188.pdf · https://github.com/nv-tlabs/lift-splat-shoot
+
+> Caveats: numbers are the **reported/ re-evaluated** values from the papers above, not
+> reproduced here. Setting 1 = no visibility filter (all vehicles); Setting 2 = visibility
+> > 40% (token ≥ 2). All main-table rows use 224×480, 100×100 m @ 0.5 m (200×200) — the
+> same grid bevunify uses, so they line up with `IoU_vehicle@0.5_visall` / `_vis2`.
