@@ -32,6 +32,9 @@ loader:
   num_workers: 4
   pin_memory: True
   prefetch_factor: 2
+  persistent_workers: False     # MUST stay False — VR eval mutates the shared transform between 631 configs;
+                                # persistent workers would keep stale Normal-config state and silently invalidate
+                                # all 630 non-Normal results.
 
 # optimizer + scheduler + max_steps/max_epochs come from the selected recipe/<model>.
 # lightning trainer — common fields only (recipe sets max_steps / max_epochs)

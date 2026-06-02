@@ -48,5 +48,8 @@ class CVTWrapper(nn.Module):
 
     def forward(self, batch):
         # CVT consumes the dict directly; output keys == canonical keys.
-        # VERIFY: CVT's expected extrinsic convention vs GaussianLSS (lidar->cam).
+        # Extrinsic convention: ego→cam (cam_from_ego). Matches GaussianLSS loader
+        # exactly — verified against CVT's native nuscenes_dataset.py:174 and
+        # encoder.py:324 (E_inv = batch['extrinsics'].inverse()). VR swap propagates
+        # via single inversion inside the encoder; see tests/probe_per_model_extrinsic_forward.py.
         return self.net(batch)

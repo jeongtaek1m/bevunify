@@ -24,6 +24,7 @@ class ValVizCallback(pl.Callback):
         self.n = max(1, int(every_n_steps))        # val: every N val batches
         self.train_n = int(train_every_n_steps)    # train: every N global steps (0 = off)
         self.out_dir = out_dir
+        self._val_buffer = []  # rank-0 only: (batch_idx, fig) accumulated across val batches
 
     @staticmethod
     def _cam(t):
@@ -63,45 +64,112 @@ class ValVizCallback(pl.Callback):
         fig.suptitle(f"{title}   | 6 cam | GT | pred", fontsize=10)
         return fig
 
-    def _emit(self, trainer, pl_module, batch, title, fname, wandb_key):
-        if self.key not in batch:
-            return
+    def _forward_all_ranks(self, pl_module, batch):
+        """DDP-safe forward: MUST run on every rank. The backbone contains
+        SyncBatchNorm (`++trainer.sync_batchnorm=True`), which calls
+        `all_reduce` inside its forward. Rank-zero-only forward would enqueue
+        NCCL collectives that other ranks never match → 30-min watchdog kill
+        (observed @ SeqNum=21922 across sedan/suv/bus). All ranks compute the
+        pred together; only rank 0 emits the viz afterward."""
         was_training = pl_module.training
         with torch.no_grad():
             pred = pl_module(batch)
         if was_training:
             pl_module.train()
-        if self.key not in pred:
-            return
+        return pred
+
+    def _build_fig(self, batch, pred, title):
+        """Render the 6cam | GT | pred panel. Returns matplotlib Figure (not closed)."""
+        if self.key not in batch or self.key not in pred:
+            return None
         imgs = batch["image"][0].detach().float().cpu()
         gt = batch[self.key][0, 0].detach().float().cpu().numpy()
         pr = pred[self.key][0, 0].sigmoid().detach().float().cpu().numpy()
         visk = f"{self.key}_visibility"
         vis = batch[visk][0].detach().cpu().numpy() if visk in batch else None
-        fig = self._figure(imgs, gt, pr, vis, title)
+        return self._figure(imgs, gt, pr, vis, title)
+
+    def _save_png(self, fig, fname):
+        os.makedirs(self.out_dir, exist_ok=True)
+        fig.savefig(os.path.join(self.out_dir, fname), dpi=100, bbox_inches="tight")
+
+    def _wandb_log_single(self, trainer, key, fig):
         try:
             from pytorch_lightning.loggers import WandbLogger
             if isinstance(trainer.logger, WandbLogger):
                 import wandb
-                trainer.logger.experiment.log({wandb_key: wandb.Image(fig)}, step=trainer.global_step)
+                trainer.logger.experiment.log({key: wandb.Image(fig)}, step=trainer.global_step)
         except Exception:
             pass
-        os.makedirs(self.out_dir, exist_ok=True)
-        fig.savefig(os.path.join(self.out_dir, fname), dpi=100, bbox_inches="tight")
-        plt.close(fig)
+
+    def _wandb_log_list(self, trainer, key, figs_with_captions):
+        """Log multiple figs under ONE wandb key — appears as a single image-grid panel.
+        Solves the 'all-same-step-overwrites' problem (val runs at one frozen global_step)
+        without splitting into per-batch keys (the val_viz/b{idx} variant that creates one
+        panel per batch in the wandb UI)."""
+        try:
+            from pytorch_lightning.loggers import WandbLogger
+            if isinstance(trainer.logger, WandbLogger):
+                import wandb
+                images = [wandb.Image(fig, caption=cap) for cap, fig in figs_with_captions]
+                trainer.logger.experiment.log({key: images}, step=trainer.global_step)
+        except Exception:
+            pass
+
+    def on_validation_epoch_start(self, trainer, pl_module):
+        """Clear rank-0 buffer at the start of every val epoch."""
+        if trainer.is_global_zero:
+            for _, f in self._val_buffer:
+                plt.close(f)   # safety: close any leftover figs
+            self._val_buffer = []
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        if not trainer.is_global_zero or batch_idx % self.n != 0:
+        if batch_idx % self.n != 0:
             return
-        self._emit(trainer, pl_module, batch,
-                   f"val  epoch {trainer.current_epoch}  batch {batch_idx}",
-                   f"ep{trainer.current_epoch:02d}_b{batch_idx:04d}.png", f"val_viz/b{batch_idx}")
+        if self.key not in batch:
+            return
+        # All ranks compute forward (DDP-consistent NCCL). Only rank 0 buffers viz.
+        pred = self._forward_all_ranks(pl_module, batch)
+        if not trainer.is_global_zero:
+            return
+        fig = self._build_fig(
+            batch, pred,
+            f"val  epoch {trainer.current_epoch}  batch {batch_idx}",
+        )
+        if fig is None:
+            return
+        # Save PNG to disk per-batch (so users keep individual files on disk).
+        self._save_png(fig, f"ep{trainer.current_epoch:02d}_b{batch_idx:04d}.png")
+        # Buffer fig for end-of-epoch single-key wandb log; do NOT close yet.
+        self._val_buffer.append((f"batch {batch_idx}", fig))
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        """Log ALL accumulated val viz under one wandb key 'val_viz' as an image list.
+        Single panel in wandb UI, scrollable through batches; PNGs stay separate on disk."""
+        if not trainer.is_global_zero or not self._val_buffer:
+            return
+        self._wandb_log_list(trainer, "val_viz", self._val_buffer)
+        # close all buffered figs and clear
+        for _, f in self._val_buffer:
+            plt.close(f)
+        self._val_buffer = []
 
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        if self.train_n <= 0 or not trainer.is_global_zero:
+        if self.train_n <= 0:
             return
         if trainer.global_step % self.train_n != 0:
             return
-        self._emit(trainer, pl_module, batch,
-                   f"train  step {trainer.global_step}",
-                   f"train_step{trainer.global_step:06d}.png", "train_viz")
+        if self.key not in batch:
+            return
+        # All ranks compute forward (DDP-consistent NCCL). Only rank 0 emits viz.
+        # Train uses single-key 'train_viz' (each step has a unique global_step, so no
+        # wandb overwrite; one image per logged step appears in the train_viz panel).
+        pred = self._forward_all_ranks(pl_module, batch)
+        if not trainer.is_global_zero:
+            return
+        fig = self._build_fig(batch, pred, f"train  step {trainer.global_step}")
+        if fig is None:
+            return
+        self._save_png(fig, f"train_step{trainer.global_step:06d}.png")
+        self._wandb_log_single(trainer, "train_viz", fig)
+        plt.close(fig)

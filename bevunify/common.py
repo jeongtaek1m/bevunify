@@ -22,8 +22,18 @@ from GaussianLSS.data import MODULES
 from . import data_toggle
 from .model_module import UnifiedModelModule
 
-# Make `data.dataset: nuscenes_toggle` resolvable by the host DataModule.
-MODULES["nuscenes_toggle"] = data_toggle
+
+class _GetDataModule:
+    """Thin adapter so a single ``get_data*`` function can register as a host
+    dataset module (which the host resolver only requires to expose ``get_data``)."""
+    def __init__(self, get_data_fn):
+        self.get_data = get_data_fn
+
+
+# Make `data.dataset: nuscenes_toggle / carla_toggle` resolvable by the host DataModule.
+# Both are served by the single ``bevunify.data_toggle`` module.
+MODULES["nuscenes_toggle"] = _GetDataModule(data_toggle.get_data)
+MODULES["carla_toggle"]    = _GetDataModule(data_toggle.get_data_carla)
 
 
 def setup_model_module(cfg):

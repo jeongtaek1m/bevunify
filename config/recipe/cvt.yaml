@@ -13,5 +13,5 @@ scheduler:
   anneal_strategy: "cos"          # CVT default (was mistakenly 'linear')
   interval: step
 trainer:
-  max_steps: 30001
+  max_steps: 16500             # ~30 epochs at effective bs=32 (16 per-GPU × 2-GPU DDP); CARLA train ≈ 17,400 samples
   max_epochs: -1

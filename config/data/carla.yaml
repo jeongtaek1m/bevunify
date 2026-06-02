@@ -1,0 +1,61 @@
+defaults:
+  - img_params: scale_0_3
+
+# 'carla_toggle' is registered by bevunify.common; pre-rendered carla labels
+# (vehicle, center, offset, visibility) + per-model toggles + VR/CTS hooks.
+dataset: 'carla_toggle'
+version: 'v1.0-carla_sedan'
+
+# carla_geobev DB and labels. Override per-platform on the CLI:
+#   data.version=v1.0-carla_suv  data.labels_dir=.../gaussianlss/suv  \
+#   data.val_version=v1.0-carla_suv_eval  data.val_labels_dir=.../gaussianlss/suv_eval
+dataset_dir: /home/hanyan_arch/data/carla_geobev
+labels_dir:  /home/hanyan_arch/data/carla_geobev_labels/gaussianlss/sedan
+
+# split-specific overrides (eval DB).
+val_dataset_dir: /home/hanyan_arch/data/carla_geobev
+val_labels_dir:  /home/hanyan_arch/data/carla_geobev_labels/gaussianlss/sedan_eval
+val_version:     'v1.0-carla_sedan_eval'
+
+cameras: [[0, 1, 2, 3, 4, 5]]
+
+# canonical 200x200 / +-50m / 0.5m-per-pixel frame
+bev:
+  h: 200
+  w: 200
+  h_meters: 100.0
+  w_meters: 100.0
+  offset: 0.0
+
+# image
+image:
+  h: 224
+  w: 480
+  top_crop: 46
+
+bev_aug_conf: [30., 20., 0., 20., 0., 0.]
+
+# pre-rendered BEV is 12-class encoded → merge to vehicle binary
+num_classes: 12
+label_indices: [[4, 5, 6, 7, 8, 10, 11]]
+
+# GT family (parity with nuscenes.yaml)
+vehicle: True
+ped: False
+
+# carla pipeline always provides intrinsics + extrinsics separately
+split_intrin_extrin: True
+
+# VR/CTS swap hooks — defaults OFF (training/eval baseline). Set per eval run.
+eval_viewpoint_variant: null            # e.g. 'yaw0pitch-20roll0'
+viewpoint_metadata_path: /NHNHOME/WORKSPACE/0526040099_A/jeongtae/carla_VR/viewpoint_metadata.json
+eval_image_swap: true
+eval_extrinsic_swap: true
+eval_target_cameras: null               # null | 'ALL' | ['CAM_FRONT', ...]
+
+# CTS cross-platform hooks (defaults off; set by eval_cts)
+cts_platform: null                      # 'suv' | 'bus' (target DB platform tag)
+cts_img_to_sedan: false
+cts_ext_override: null                  # {cam_channel: 4x4 sedan extrinsic}
+
+# (gt_center / gt_offset / gt_visibility provided by the selected `gt/` preset)

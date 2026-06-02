@@ -1,9 +1,13 @@
-"""GaussianLSS GT loader with per-model center/offset/visibility toggles.
+"""GT loaders with per-model center/offset/visibility toggles.
 
-This subclasses the host ``LoadDataTransform`` and re-implements only
-``get_bev_from_gtbbox`` / ``__call__`` so that the (expensive) center-heatmap,
-offset and visibility signals are produced *only* when the selected model's loss
-consumes them. With all toggles on, the output is identical to the host loader.
+Two transform classes (one per dataset host), shared by all 6 models. Both
+emit the canonical ``vehicle*`` keys consumed by the unified loss/metric.
+
+- ``ToggleLoadDataTransform``       — subclasses host nuScenes ``LoadDataTransform``;
+  rasterizes BEV from ``gt_box_*.npz`` on-the-fly with per-signal toggles.
+- ``CarlaToggleLoadDataTransform``  — subclasses host ``transforms_carla.LoadDataTransform``;
+  loads pre-rendered carla labels and remaps the host's ``bev*`` keys to
+  ``vehicle*``; carries VR/CTS swap hooks via the parent.
 
 Toggle flags arrive via ``cfg.data`` (see ``config/gt/*.yaml``):
     gt_center, gt_offset, gt_visibility  (all default True)
@@ -15,6 +19,8 @@ from nuscenes.utils.data_classes import Box
 
 from GaussianLSS.data.transforms import LoadDataTransform, Sample
 from GaussianLSS.data.common import INTERPOLATION, sincos2quaternion
+
+from .carla_data import LoadDataTransform as _CarlaLDT, Sample as _CarlaSample
 
 from .augmentation import ImageWarp, build_extrinsic_noise
 
@@ -185,3 +191,71 @@ class ToggleLoadDataTransform(LoadDataTransform):
             result["bev_augm"] = bev_augm
 
         return result
+
+
+# ── CARLA: pre-rendered labels + key remap + VR/CTS hooks (from parent) ────────
+
+_CARLA_KEY_REMAP = {
+    "bev": "vehicle",
+    "bev_visibility": "vehicle_visibility",
+    "bev_center": "vehicle_center",
+    "bev_offset": "vehicle_offset",
+}
+
+
+class CarlaToggleLoadDataTransform(_CarlaLDT):
+    def __init__(self, *args, gt_center=True, gt_offset=True, gt_visibility=True,
+                 extrin_noise=None, training=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.gt_center = bool(gt_center)
+        self.gt_offset = bool(gt_offset)
+        self.gt_visibility = bool(gt_visibility)
+        self.extrin_noise = build_extrinsic_noise(extrin_noise, training)
+
+    def __call__(self, batch):
+        if not isinstance(batch, _CarlaSample):
+            batch = _CarlaSample(**batch)
+
+        # Calibration-noise augmentation (train-only; preserves images + BEV GT).
+        if self.extrin_noise is not None and self.extrin_noise.active:
+            batch.extrinsics = self.extrin_noise(batch.extrinsics)
+
+        result = super().__call__(batch)
+
+        # Remap host keys to canonical names + apply toggle (drop unused signals).
+        out = {}
+        for k, v in result.items():
+            new_k = _CARLA_KEY_REMAP.get(k, k)
+            if new_k == "vehicle_center" and not self.gt_center:
+                continue
+            if new_k == "vehicle_offset" and not self.gt_offset:
+                continue
+            if new_k == "vehicle_visibility":
+                if not self.gt_visibility:
+                    continue
+                if not isinstance(v, torch.Tensor):
+                    v = torch.from_numpy(np.asarray(v, dtype=np.uint8))
+            out[new_k] = v
+
+        # cam_idx (CVT wrapper consumes this). Carla JSON ships 'cam_ids'.
+        if "cam_idx" not in out:
+            cam_ids = getattr(batch, "cam_ids", None) or list(range(len(batch.images)))
+            out["cam_idx"] = torch.LongTensor(cam_ids)
+
+        # pose_inverse for wrappers that need ego-frame transforms.
+        if "pose_inverse" not in out and "pose_inverse" in batch:
+            out["pose_inverse"] = np.float32(batch["pose_inverse"])
+
+        # ego_from_cam forward-compat (parity with bevunify.datagen nuScenes path).
+        # GUARD: never forward when a VR/CTS extrinsic swap is active — the cached
+        # ego_from_cam would NOT reflect the in-place mutation done in get_cameras
+        # for the swap. rots_trans() would short-circuit to the stale cache and the
+        # swap would silently no-op. Force-invert via inv(E) by omitting the key.
+        swap_active = (
+            (self.eval_viewpoint_variant and self.eval_extrinsic_swap) or
+            (self.cts_ext_override is not None)
+        )
+        if "ego_from_cam" not in out and "ego_from_cam" in batch and not swap_active:
+            out["ego_from_cam"] = torch.tensor(np.float32(batch["ego_from_cam"]))
+
+        return out
