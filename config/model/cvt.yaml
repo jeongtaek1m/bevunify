@@ -7,3 +7,5 @@ repo_root: third_party/cross_view_transformers
 config_name: config
 center: true       # emit ${key}_center too (CVT loss uses seg + center)
 backbone: efficientnet-b4   # CVT camera encoder (EfficientNetExtractor); also efficientnet-b0
+image_h: ${data.image.h}    # CVT sizes positional embeddings to input -> track central resolution
+image_w: ${data.image.w}

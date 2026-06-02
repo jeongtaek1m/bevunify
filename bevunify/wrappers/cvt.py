@@ -18,7 +18,8 @@ from .repo_compose import compose_repo_cfg
 
 class CVTWrapper(nn.Module):
     def __init__(self, key, repo_root, config_name="config", center=True,
-                 experiment="cvt_nuscenes_vehicle", backbone="efficientnet-b4"):
+                 experiment="cvt_nuscenes_vehicle", backbone="efficientnet-b4",
+                 image_h=None, image_w=None):
         super().__init__()
         self.key = key
         repo_root = add_repo_to_path(repo_root)
@@ -34,6 +35,12 @@ class CVTWrapper(nn.Module):
         if center:
             outputs[f"{key}_center"] = [1, 2]
         OmegaConf.set_struct(cfg, False)
+        # image resolution: CVT sizes its EfficientNet output + cross-view positional
+        # embeddings to data.image (the CVT repo's own default 224x480). Push the unified
+        # loader's resolution so the embedding grid matches the actual input.
+        if image_h is not None and OmegaConf.select(cfg, "data.image") is not None:
+            cfg.data.image.h = image_h
+            cfg.data.image.w = image_w
         # backbone knob (CVT EfficientNetExtractor; native efficientnet-b4 / -b0).
         cfg.model.encoder.backbone.model_name = backbone
         cfg.model.outputs = OmegaConf.create(outputs)

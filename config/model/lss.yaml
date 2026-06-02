@@ -13,7 +13,7 @@ grid_conf:
   zbound: [-10.0, 10.0, 20.0]
   dbound: [4.0, 45.0, 1.0]
 data_aug_conf:
-  final_dim: [224, 480]
+  final_dim: ["${data.image.h}", "${data.image.w}"]   # LSS frustum sized to input -> track central resolution
   cams: [CAM_FRONT_LEFT, CAM_FRONT, CAM_FRONT_RIGHT, CAM_BACK_LEFT, CAM_BACK, CAM_BACK_RIGHT]
   Ncams: 6
   H: 900
