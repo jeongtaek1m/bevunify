@@ -15,11 +15,11 @@ data:
 experiment:
   project: bevseg-lara
 
-# LaRa's Perceiver latent cross/self-attention OOMs at the default batch 16 on 48GB;
-# cap to 4 (effective 8 on 2 GPUs).
+# batch 16/GPU (targets B200). NOTE: LaRa's Perceiver latent attention OOMs a 48GB card
+# at 16 — lower per-GPU there if running on smaller VRAM.
 loader:
-  train_batch_size: 4
-  val_batch_size: 4
+  train_batch_size: 16
+  val_batch_size: 16
 
 key: vehicle
 val_only: False
