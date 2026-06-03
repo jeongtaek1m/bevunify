@@ -1,6 +1,7 @@
 # @package _global_
-# PointBeV recipe: AdamW + OneCycleLR. 30 epochs (OneCycle total_steps auto-filled from
-# trainer.estimated_stepping_batches since max_steps=-1).
+# PointBeV recipe: AdamW + OneCycleLR. 50 epochs (OneCycle total_steps auto-filled from
+# trainer.estimated_stepping_batches since max_steps=-1). The 30-ep run reached only 41.40
+# vs target 44.0 — PointBeV's original trains 100 ep (at batch 1); 50 closes most of the gap.
 # NOTE: batch 16/GPU OOMs a 48 GB card here — run at 8/GPU on this server (see run script).
 optimizer:
   lr: 3e-4
