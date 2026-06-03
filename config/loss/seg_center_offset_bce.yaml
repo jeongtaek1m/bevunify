@@ -1,20 +1,23 @@
 # PointBeV native: BCE(pos_weight=2.13) seg + center + offset, balanced by LEARNABLE
 # homoscedastic uncertainty weighting (PointBeV configs/train.yaml mode="learned", default).
-# In bevunify MultipleLoss, weight=-1 => learnable: term scaled by 1/exp(w) + 0.5*w, with w
-# an nn.Parameter that IS optimized (UnifiedModelModule includes loss_func.parameters()).
-center_weight: -1.0
+# Native coeffs (pointbev/loss/common.py _init_coeffs_dict, learned mode): the isolated bev
+# segmentation term gets coeff 10.0 ("Factor 10 as in SimpleBEV"); center/offset get 0.5.
+# In bevunify MultipleLoss a NEGATIVE weight => learnable with base=|weight|: term scaled by
+# base/exp(w) + 0.5*w, w an optimized nn.Parameter (UnifiedModelModule optimizes
+# loss_func.parameters()). So bev=-10 (base 10), center/offset=-0.5 (base 0.5) match native.
+center_weight: -0.5
 center:
   _target_: GaussianLSS.losses.CenterLoss
   min_visibility: ${min_visibility}
   key: ${key}
 
-offset_weight: -1.0
+offset_weight: -0.5
 offset:
   _target_: GaussianLSS.losses.OffsetLoss
   min_visibility: ${min_visibility}
   key: ${key}
 
-bev_weight: -1.0
+bev_weight: -10.0
 bev:
   _target_: bevunify.losses.BCESegmentationLoss
   min_visibility: ${min_visibility}
