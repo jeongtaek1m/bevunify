@@ -115,19 +115,25 @@ class MultipleLoss(torch.nn.ModuleDict):
         weights = dict()
         learnable_weights = dict()
 
-        # Parse only the weights
+        # Parse only the weights (int or float). A NEGATIVE weight means the term is
+        # balanced by LEARNABLE homoscedastic uncertainty weighting with base = |weight|:
+        #   term -> (base / exp(w)) * loss + 0.5 * w,  w an optimized nn.Parameter.
+        # Legacy -1 keeps its hard-coded base (0.5, or 10 for visible/ped). Positive = fixed.
         for key, v in modules_or_weights.items():
-            if isinstance(v, float):
+            if isinstance(v, (int, float)):
                 k = key.replace('_weight', '')
                 if v == -1:
                     weights[k] =  0.5 if k not in ['visible', 'ped'] else 10.0
                     learnable_weights[k] = nn.Parameter(torch.tensor(0.0), requires_grad=True)
+                elif v < 0:
+                    weights[k] = float(-v)
+                    learnable_weights[k] = nn.Parameter(torch.tensor(0.0), requires_grad=True)
                 else:
-                    weights[k] = v
+                    weights[k] = float(v)
 
         # Parse the loss functions
         for key, v in modules_or_weights.items():
-            if not isinstance(v, float):
+            if not isinstance(v, (int, float)):
                 modules[key] = v
 
         super().__init__(modules)

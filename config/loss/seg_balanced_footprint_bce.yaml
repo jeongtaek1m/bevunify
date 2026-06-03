@@ -1,18 +1,19 @@
 # simple_bev-native: BCE(pos_weight=2.13) seg + balanced-MSE center + footprint-masked
-# offset. Matches simple_bev train_nuscenes (balanced_mse_loss for center; offset L1
-# masked by the vehicle seg footprint, not by visibility over the whole BEV).
-center_weight: 0.05
+# offset, balanced by LEARNABLE homoscedastic uncertainty weighting (simple_bev train_nuscenes:
+# ce = 10*loss/exp(w); center/offset = 0.5*loss/exp(w); each + 0.5*w, w optimized).
+# Negative weight in MultipleLoss => learnable with base=|weight|: bev base 10, center/offset 0.5.
+center_weight: -0.5
 center:
   _target_: bevunify.losses.BalancedMSECenterLoss
   key: ${key}
 
-offset_weight: 0.05
+offset_weight: -0.5
 offset:
   _target_: bevunify.losses.FootprintOffsetLoss
   min_visibility: ${min_visibility}
   key: ${key}
 
-bev_weight: 1.0
+bev_weight: -10.0
 bev:
   _target_: bevunify.losses.BCESegmentationLoss
   min_visibility: ${min_visibility}
