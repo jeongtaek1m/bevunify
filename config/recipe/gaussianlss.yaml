@@ -16,3 +16,9 @@ scheduler:
 trainer:
   max_steps: -1
   max_epochs: 50
+
+# per-model batch (pushed so every server matches). 32 = power-of-2 for GPU efficiency;
+# needs high VRAM (B200) — OOMs a 48 GB card. effective batch = train_batch_size x devices.
+loader:
+  train_batch_size: 32
+  val_batch_size: 32

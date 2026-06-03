@@ -67,26 +67,26 @@ bevunify currently runs at **224×480**, so compare against the 224×480 table a
 ## Reproduction status (bevunify runs)
 
 Target = paper **Setting 2 (vis ≥ 2)** at 224×480. "Reproduced" = our best validation
-`IoU_vehicle@0.5_vis2` reaches the paper number. Last updated **2026-06-02**.
+`IoU_vehicle@0.5_vis2` reaches the paper number. Last updated **2026-06-03**.
 
-- [x] **LSS** — target 32.07† · **got 34.69** (vis-all 29.87) → met/exceeded.
-      *(run interrupted at epoch 3/40 by a node OOM/external kill, but target already passed.)*
-- [ ] **CVT** — target 36.0 · best **18.08** (vis-all 14.60), then dropping → **not reproduced**.
-      Cause: `lr=8e-3` (full 2× linear scaling for effective batch 32) runs too hot / unstable;
-      the earlier `lr=4e-3` run reached 0.22 vis2 by epoch 4. Needs lr fix + a full run.
-- [ ] **GaussianLSS** (host) — target 42.8 · not run yet.
-- [ ] **PointBeV** — target 44.0 · not run yet.
-- [ ] **Simple-BEV** — target 43.0 · not run yet.
-- [ ] **LaRa** — target 38.9 · not run yet.
+- [x] **LSS** — target 32.07† · **38.47** (vis-all 33.80) → met/exceeded. *(40/40 epochs, finished cleanly.)*
+- [ ] **CVT** — target 36.0 · **35.32** (vis-all 29.55) → ≈ near miss. *(finished, but only **18 epochs**:
+      `max_steps=16500` was sized for CARLA's ~17.4k samples; on nuScenes (~917 steps/ep) that is 18 ep.
+      A full 30-ep run (`max_steps≈26,400`) should clear 36.0 — last epochs were still ~flat at 35.3.)*
+- [x] **LaRa** — target 38.9 · **40.71** (vis-all 35.63) → met/exceeded. *(30/30 epochs, finished cleanly.)*
+- [ ] **PointBeV** (single-frame, non-temporal) — target 44.0 · **41.40** (vis-all 35.86) → **under (−2.6)**.
+      *(30/30 epochs, finished; batch 8/GPU eff 16 after OOM at 16/GPU. Large batch + unscaled lr → under.)*
+- [ ] **GaussianLSS** (host) — target 42.8 · **41.17** (vis-all 34.73) → ≈ near miss (1.6 under). *(40/40 epochs, finished cleanly; best @ep21. batch 8 = eff 16 on 2 GPU.)*
+- [ ] **Simple-BEV** — target 43.0 · **40.54** (vis-all 35.02) → ≈ near miss. *(40/40 epochs, finished; best @ep22; refcam=CAM_FRONT / −0.5 / balanced-MSE+footprint-offset fixes; 224×480 vs paper 448×800.)*
 
 | Model | target (S2, vis≥2) | our best vis2 | epochs | status |
 |---|:--:|:--:|:--:|:--:|
-| **LSS** | 32.07† | **34.69** | 3/40 (interrupted) | ✅ met |
-| **CVT** | 36.0 | 18.08 | 4/34 (interrupted) | ❌ lr too high |
-| GaussianLSS | 42.8 | — | — | ⬜ not run |
-| PointBeV | 44.0 | — | — | ⬜ not run |
-| Simple-BEV | 43.0 | — | — | ⬜ not run |
-| LaRa | 38.9 | — | — | ⬜ not run |
+| **LSS** | 32.07† | **38.47** | 40/40 (finished) | ✅ met |
+| **CVT** | 36.0 | **35.32** | 18 (finished; CARLA-sized budget) | ≈ near, under-trained |
+| **LaRa** | 38.9 | **40.71** | 30/30 (finished) | ✅ met |
+| **PointBeV** | 44.0 (single-frame) | **41.40** | 30/30 (finished) | ≈ near (−2.6 under) |
+| **GaussianLSS** (host) | 42.8 | **41.17** | 40/40 (finished) | ≈ near (1.6 under) |
+| **Simple-BEV** | 43.0 | **40.54** | 40/40 (finished) | ≈ near (2.5 under) |
 
 † LSS native setting is 128×352; ours is 224×480 `vis2` — a loose comparison, but it clearly
 clears the paper figure.
