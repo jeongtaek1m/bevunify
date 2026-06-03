@@ -123,6 +123,12 @@ class LoadDataTransform(torchvision.transforms.ToTensor):
         self.viewpoint_metadata_path = viewpoint_metadata_path
         self.viewpoint_metadata = None
         self.vr_root = None
+
+        # GT cache: token -> dict from get_bev(). Populated once before the VR/CTS
+        # config loop (see eval._warm_gt_cache). With DataLoader fork on Linux this
+        # dict is COW-shared across workers. Skip 3 disk reads per sample per config
+        # (bev.png + visibility.png + aux.npz). LOSSLESS — same tensors as on-disk.
+        self.gt_cache = None
         if eval_viewpoint_variant is not None and eval_viewpoint_variant != "yaw0pitch0roll0":
             assert viewpoint_metadata_path is not None, \
                 "eval_viewpoint_variant set but viewpoint_metadata_path is None"
@@ -277,6 +283,11 @@ class LoadDataTransform(torchvision.transforms.ToTensor):
         return result
 
     def get_bev(self, sample):
+        # GT cache hit: skip 3 disk reads (bev.png / visibility.png / aux.npz).
+        # GT is invariant under VR/CTS perturbations, so a single warm pass is enough.
+        if self.gt_cache is not None and sample.token in self.gt_cache:
+            return self.gt_cache[sample.token]
+
         scene_dir = self.labels_dir / sample.scene
         bev = None
         if sample.bev is not None:
@@ -306,6 +317,9 @@ class LoadDataTransform(torchvision.transforms.ToTensor):
 
         if "pose" in sample:
             result["pose"] = np.float32(sample["pose"])
+
+        if self.gt_cache is not None:
+            self.gt_cache[sample.token] = result
         return result
 
     def __call__(self, batch):

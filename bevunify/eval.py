@@ -150,6 +150,28 @@ def _ds_iter(loader):
     return ds.datasets if hasattr(ds, "datasets") else [ds]
 
 
+def _warm_gt_cache(loader, tag="gt-cache"):
+    """Pre-populate transform.gt_cache for every CARLA dataset in the loader.
+    After this, all subsequent VR/CTS config iterations skip 3 disk reads per
+    sample (bev.png + visibility.png + aux.npz). Lossless — exact same tensors
+    as the on-disk decode. Cache dict is populated in the main process so
+    DataLoader workers inherit it on fork (Linux COW)."""
+    from bevunify.carla_data import LoadDataTransform, Sample
+    import time
+    t0 = time.time(); n = 0
+    for ds in _ds_iter(loader):
+        t = getattr(ds, "transform", None)
+        if not isinstance(t, LoadDataTransform):
+            continue                                   # nuscenes path: skip
+        if t.gt_cache is None:
+            t.gt_cache = {}
+        for s in ds.samples:
+            sample = Sample(**s) if not isinstance(s, Sample) else s
+            t.get_bev(sample)                          # populates t.gt_cache[sample.token]
+            n += 1
+    log.info(f"[eval/{tag}] warmed {n} samples in {time.time() - t0:.1f}s")
+
+
 # ── VR (viewpoint-robustness) ─────────────────────────────────────────────────
 
 def _variant_key(axis, mag):
@@ -269,6 +291,8 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
     data_module.setup("validate")
     val_loader = data_module.val_dataloader()
 
+    _warm_gt_cache(val_loader, tag="vr-gt-cache")  # lossless — skips 631× redundant GT decode
+
     grid = _build_vr_grid(eval_cfg.axes, eval_cfg.magnitudes,
                           eval_cfg.conditions, eval_cfg.protocols)
     log.info(f"[eval/vr] total configs: {len(grid)}")
@@ -302,6 +326,8 @@ def _run_cts(cfg, eval_cfg, model_module, data_module, out_dir):
     model = model_module.backbone.eval().cuda()
     data_module.setup("validate")
     val_loader = data_module.val_dataloader()
+
+    _warm_gt_cache(val_loader, tag="cts-gt-cache")  # lossless — skips 4× redundant GT decode
 
     viz_root = (out_dir / "viz") if eval_cfg.viz_enable else None
     results = {}
