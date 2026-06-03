@@ -460,29 +460,27 @@ class Encoder(nn.Module):
         # self.layers = nn.ModuleList(layers)
         self.feature_level = feature_level
 
-
-        # pick feature level shape
-        feat_shape = self.backbone.output_shapes[feature_level]
-        _, feat_dim, feat_height, feat_width = self.down(torch.zeros(feat_shape)).shape
-        print(f'[Encoder] Using feature level {feature_level} ({self.backbone.layer_names[feature_level]}) '
-              f'-> (dim={feat_dim}, H={feat_height}, W={feat_width})')
-
-        # Cross-only module to be cloned across layers
-        base_cross = CrossViewAttention(feat_height, feat_width, feat_dim, dim, **cross_view)
-
-        # build Transformer stack
+        # MULTI-SCALE (restored from CVT; the iros2024 branch had collapsed this to a single
+        # scale, making DSPE weaker than the CVT baseline). One block per backbone scale,
+        # applied coarse->fine on the shared BEV query:
+        #   BEV self-attention  ->  DSPE cross-view attention  ->  ResNet bottleneck refine.
+        self_blocks = []
+        cross_views = []
         layers = []
-        for i in range(num_layers):
-            cross_i = deepcopy(base_cross)
-            layer = BEVTransformerLayer(
-                dim=dim,
-                bev_self_num_head=cross_view.get('bev_self_num_head', 8),
-                bev_self_ffn_dim=cross_view.get('bev_self_ffn_dim', dim*2),
-                bev_self_dropout=cross_view.get('bev_self_dropout', 0.1),
-                cross_view_module=cross_i,
-            )
-            layers.append(layer)
-        self.transformer = BEVTransformerEncoder(nn.ModuleList(layers))
+        for feat_shape, n_mid, name in zip(self.backbone.output_shapes, middle,
+                                           self.backbone.layer_names):
+            _, feat_dim, feat_height, feat_width = self.down(torch.zeros(feat_shape)).shape
+            print(f'[Encoder] scale {name} -> (dim={feat_dim}, H={feat_height}, W={feat_width})')
+            self_blocks.append(BEVSelfAttnBlock(
+                d_model=dim,
+                nhead=cross_view.get('bev_self_num_head', 8),
+                dim_feedforward=cross_view.get('bev_self_ffn_dim', dim * 2),
+                dropout=cross_view.get('bev_self_dropout', 0.1)))
+            cross_views.append(CrossViewAttention(feat_height, feat_width, feat_dim, dim, **cross_view))
+            layers.append(nn.Sequential(*[ResNetBottleNeck(dim) for _ in range(n_mid)]))
+        self.self_blocks = nn.ModuleList(self_blocks)
+        self.cross_views = nn.ModuleList(cross_views)
+        self.layers = nn.ModuleList(layers)
 
         self.bev_embedding = BEVEmbedding(dim, **bev_embedding)
 
@@ -495,23 +493,17 @@ class Encoder(nn.Module):
         I_inv = batch['intrinsics'].inverse()           # b n 3 3
         E_inv = batch['extrinsics'].inverse()           # b n 4 4
 
-        # features = [self.down(y) for y in self.backbone(self.norm(image))]
-        backbone_feats = [self.down(y) for y in self.backbone(self.norm(image))]
-        feature = backbone_feats[self.feature_level]
-
+        features = [self.down(y) for y in self.backbone(self.norm(image))]   # one per scale
 
         x = self.bev_embedding.get_prior()              # d H W
         x = repeat(x, '... -> b ...', b=b)              # b d H W
 
-        feature = rearrange(feature, '(b n) ... -> b n ...', b=b, n=n)
-        x = self.transformer(x, self.bev_embedding, feature, I_inv, E_inv)
+        world_xy = self.bev_embedding.grid[:2]          # 2 H W (global BEV coords for self-attn pos)
+        for self_block, cross_view, layer, feature in zip(
+                self.self_blocks, self.cross_views, self.layers, features):
+            feature = rearrange(feature, '(b n) ... -> b n ...', b=b, n=n)
+            bev_pos = cross_view.bev_embed(world_xy[None]).expand(b, -1, -1, -1)   # b d H W
+            x = self_block(x, bev_pos=bev_pos)          # BEV self-attention
+            x = cross_view(x, self.bev_embedding, feature, I_inv, E_inv)          # DSPE cross-view
+            x = layer(x)                                # ResNet bottleneck refine
         return x
-
-        # for cross_view, feature, layer in zip(self.cross_views, features, self.layers):
-        #     feature = rearrange(feature, '(b n) ... -> b n ...', b=b, n=n)
-
-        #     x = cross_view(x, self.bev_embedding, feature, I_inv, E_inv)
-        #     x = layer(x)
-
-
-        # return x
