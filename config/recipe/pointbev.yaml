@@ -1,7 +1,7 @@
 # @package _global_
-# PointBeV original recipe: AdamW + OneCycleLR. PointBeV is epoch-based (max_epochs=100)
-# and computes OneCycle total_steps dynamically; here it is driven by max_steps.
-# TODO: set max_steps ~= (train_samples / effective_batch) * 100 for the real run.
+# PointBeV recipe: AdamW + OneCycleLR. 30 epochs (OneCycle total_steps auto-filled from
+# trainer.estimated_stepping_batches since max_steps=-1).
+# NOTE: batch 16/GPU OOMs a 48 GB card here — run at 8/GPU on this server (see run script).
 optimizer:
   lr: 3e-4
   weight_decay: 1e-7
@@ -15,5 +15,5 @@ scheduler:
   anneal_strategy: "linear"
   interval: step
 trainer:
-  max_steps: 200000             # placeholder ~100 epochs; tune to your dataset/batch
-  max_epochs: -1
+  max_steps: -1
+  max_epochs: 30
