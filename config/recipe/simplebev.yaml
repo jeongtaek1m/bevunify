@@ -1,5 +1,7 @@
 # @package _global_
-# simple_bev original recipe: AdamW + OneCycleLR, step-based (~100k iters).
+# simple_bev recipe: AdamW + OneCycleLR, 40 epochs. The original used effective batch 40
+# (batch 8 x grad_acc 5); we FOLD that into a single batch_size=40 (no grad accumulation),
+# run on a high-VRAM GPU (B200). OneCycle total_steps auto-fills from max_epochs.
 optimizer:
   lr: 3e-4
   weight_decay: 1e-7
@@ -13,5 +15,11 @@ scheduler:
   anneal_strategy: "linear"
   interval: step
 trainer:
-  max_steps: 100000             # simple_bev max_iters; effective batch x grad_acc=5
-  max_epochs: -1
+  max_steps: -1
+  max_epochs: 40
+
+# per-model batch (pushed): 64 = power-of-2 (faster than the original's eff-40), folding the
+# grad_acc into one real batch (no accumulation). High-VRAM GPU (B200). eff = 64 x devices.
+loader:
+  train_batch_size: 64
+  val_batch_size: 64
