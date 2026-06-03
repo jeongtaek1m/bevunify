@@ -129,6 +129,14 @@ class LoadDataTransform(torchvision.transforms.ToTensor):
         # dict is COW-shared across workers. Skip 3 disk reads per sample per config
         # (bev.png + visibility.png + aux.npz). LOSSLESS — same tensors as on-disk.
         self.gt_cache = None
+
+        # Image cache: str(image_path) -> (img_tensor (3,h,w) float32, image_w, image_h).
+        # Stores ORIGINAL-image processed tensors only (skipping VR-swapped paths since
+        # they explode by 90×). Hit rate per VR config: Normal/ER = 6/6, VR/CR per_cam
+        # = 5/6, all_cam = 0/6. The cached tensor is the exact output of img_transform
+        # after resize + crop (uses image's original width/height for intrinsics rescale).
+        # LOSSLESS — bit-identical to the uncached pipeline.
+        self.image_cache = None
         if eval_viewpoint_variant is not None and eval_viewpoint_variant != "yaw0pitch0roll0":
             assert viewpoint_metadata_path is not None, \
                 "eval_viewpoint_variant set but viewpoint_metadata_path is None"
@@ -217,25 +225,36 @@ class LoadDataTransform(torchvision.transforms.ToTensor):
                                and self.eval_image_swap and is_target)
 
             if do_swap_img:
-                image = Image.open(self._swap_image_path(image_path, cam_channel))
+                resolved_path = self._swap_image_path(image_path, cam_channel)
             elif self.cts_img_to_sedan:
-                image = Image.open(self.dataset_dir / self._cts_path_to_sedan(image_path, cam_channel))
+                resolved_path = self.dataset_dir / self._cts_path_to_sedan(image_path, cam_channel)
             elif self.val_perturb is not None:
-                image = Image.open(self._remap_perturbed_path(image_path))
+                resolved_path = self._remap_perturbed_path(image_path)
             else:
-                image = Image.open(self.dataset_dir / image_path)
+                resolved_path = self.dataset_dir / image_path
 
-            image_new = image.resize((w_resize, h_resize), resample=Image.BILINEAR)
-            image_new = image_new.crop((0, top_crop, image_new.width, image_new.height))
+            # Image cache hit → skip Image.open + resize + crop + ToTensor (~14ms/cam).
+            cache_key = str(resolved_path)
+            hit = (self.image_cache is not None and cache_key in self.image_cache)
+            if hit:
+                img_t, image_w, image_h = self.image_cache[cache_key]
+            else:
+                image = Image.open(resolved_path)
+                image_new = image.resize((w_resize, h_resize), resample=Image.BILINEAR)
+                image_new = image_new.crop((0, top_crop, image_new.width, image_new.height))
+                img_t = self.img_transform(image_new)
+                image_w, image_h = image.width, image.height
+                if self.image_cache is not None:
+                    self.image_cache[cache_key] = (img_t, image_w, image_h)
 
             I = np.float32(I_original)
-            I[0, 0] *= w_resize / image.width
-            I[0, 2] *= w_resize / image.width
-            I[1, 1] *= h_resize / image.height
-            I[1, 2] *= h_resize / image.height
+            I[0, 0] *= w_resize / image_w
+            I[0, 2] *= w_resize / image_w
+            I[1, 1] *= h_resize / image_h
+            I[1, 2] *= h_resize / image_h
             I[1, 2] -= top_crop
 
-            images.append(self.img_transform(image_new))
+            images.append(img_t)
             intrinsics.append(torch.tensor(I))
 
         extrinsics = torch.tensor(np.float32(sample.extrinsics))

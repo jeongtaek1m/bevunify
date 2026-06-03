@@ -172,6 +172,47 @@ def _warm_gt_cache(loader, tag="gt-cache"):
     log.info(f"[eval/{tag}] warmed {n} samples in {time.time() - t0:.1f}s")
 
 
+def _warm_image_cache(loader, tag="img-cache"):
+    """Pre-populate transform.image_cache with each sample's 6 ORIGINAL (unswapped)
+    camera tensors. Hit rates per VR config: Normal=6/6, ER=6/6, VR/CR per_cam=5/6,
+    all_cam=0/6 (the 1 or 6 swapped paths still go through disk). Lossless — cached
+    tensors are exactly the output of Image.open→resize→crop→ToTensor, identical to
+    the uncached pipeline. ~1.3 MB per cam → ~30 GB per val set of 3792 samples;
+    Linux COW keeps DataLoader workers sharing the dict on fork."""
+    from bevunify.carla_data import LoadDataTransform, Sample
+    import time
+    t0 = time.time(); n = 0
+    for ds in _ds_iter(loader):
+        t = getattr(ds, "transform", None)
+        if not isinstance(t, LoadDataTransform):
+            continue
+        if t.image_cache is None:
+            t.image_cache = {}
+        # Ensure VR/CTS hooks are OFF during warmup so get_cameras takes the
+        # plain `self.dataset_dir / image_path` branch — exactly the path we want
+        # cached for non-swap configs.
+        saved = (t.eval_viewpoint_variant, t.eval_image_swap, t.eval_extrinsic_swap,
+                 t.eval_target_cameras, t.cts_img_to_sedan, t.cts_ext_override,
+                 t.val_perturb)
+        t.eval_viewpoint_variant = None
+        t.eval_image_swap = False
+        t.eval_extrinsic_swap = False
+        t.eval_target_cameras = None
+        t.cts_img_to_sedan = False
+        t.cts_ext_override = None
+        t.val_perturb = None
+        try:
+            for s in ds.samples:
+                sample = Sample(**s) if not isinstance(s, Sample) else s
+                t.get_cameras(sample, **t.image_config)    # populates t.image_cache by path
+                n += 1
+        finally:
+            (t.eval_viewpoint_variant, t.eval_image_swap, t.eval_extrinsic_swap,
+             t.eval_target_cameras, t.cts_img_to_sedan, t.cts_ext_override,
+             t.val_perturb) = saved
+    log.info(f"[eval/{tag}] warmed {n} samples × 6 cams in {time.time() - t0:.1f}s")
+
+
 # ── VR (viewpoint-robustness) ─────────────────────────────────────────────────
 
 def _variant_key(axis, mag):
@@ -291,7 +332,8 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
     data_module.setup("validate")
     val_loader = data_module.val_dataloader()
 
-    _warm_gt_cache(val_loader, tag="vr-gt-cache")  # lossless — skips 631× redundant GT decode
+    _warm_gt_cache(val_loader, tag="vr-gt-cache")        # 3 GT decodes / sample / config saved
+    _warm_image_cache(val_loader, tag="vr-img-cache")    # 6 original-image decodes / sample saved on most configs
 
     grid = _build_vr_grid(eval_cfg.axes, eval_cfg.magnitudes,
                           eval_cfg.conditions, eval_cfg.protocols)
@@ -327,7 +369,8 @@ def _run_cts(cfg, eval_cfg, model_module, data_module, out_dir):
     data_module.setup("validate")
     val_loader = data_module.val_dataloader()
 
-    _warm_gt_cache(val_loader, tag="cts-gt-cache")  # lossless — skips 4× redundant GT decode
+    _warm_gt_cache(val_loader, tag="cts-gt-cache")          # 3 GT decodes / sample / cond saved
+    _warm_image_cache(val_loader, tag="cts-img-cache")      # 6 sedan-image decodes saved on NORMAL+EXT
 
     viz_root = (out_dir / "viz") if eval_cfg.viz_enable else None
     results = {}
