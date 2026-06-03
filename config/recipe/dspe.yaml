@@ -24,3 +24,9 @@ trainer:
   max_steps: -1
   max_epochs: 50
   gradient_clip_val: 5.0
+
+# per-model batch (pushed). 16/GPU x 2 GPU = eff 32 = the paper's effective batch
+# (4/GPU x 8 GPU) that lr 1.2e-2 was tuned for. Fits a 48 GB card.
+loader:
+  train_batch_size: 16
+  val_batch_size: 16
