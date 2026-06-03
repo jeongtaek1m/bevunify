@@ -75,8 +75,8 @@ Target = paper **Setting 2 (vis ≥ 2)** at 224×480. "Reproduced" = our best va
       A full 30-ep run (`max_steps≈26,400`) should clear 36.0 — last epochs were still ~flat at 35.3.)*
 - [ ] **PointBeV** (single-frame, non-temporal) — target 44.0 · **running** (30 ep, GPU 0,1).
 - [ ] **LaRa** — target 38.9 · **running** (30 ep, GPU 2,3).
-- [ ] **GaussianLSS** (host) — target 42.8 · not run yet.
-- [ ] **Simple-BEV** — target 43.0 · not run yet.
+- [ ] **GaussianLSS** (host) — target 42.8 · **41.17** (vis-all 34.73) → ≈ near miss (1.6 under). *(40/40 epochs, finished cleanly; best @ep21. batch 8 = eff 16 on 2 GPU.)*
+- [ ] **Simple-BEV** — target 43.0 · **40.54** (vis-all 35.02) → ≈ near miss. *(40/40 epochs, finished; best @ep22; refcam=CAM_FRONT / −0.5 / balanced-MSE+footprint-offset fixes; 224×480 vs paper 448×800.)*
 
 | Model | target (S2, vis≥2) | our best vis2 | epochs | status |
 |---|:--:|:--:|:--:|:--:|
@@ -84,8 +84,8 @@ Target = paper **Setting 2 (vis ≥ 2)** at 224×480. "Reproduced" = our best va
 | **CVT** | 36.0 | **35.32** | 18 (finished; CARLA-sized budget) | ≈ near, under-trained |
 | **PointBeV** | 44.0 (single-frame) | — | running (30 ep) | ⏳ in progress |
 | **LaRa** | 38.9 | — | running (30 ep) | ⏳ in progress |
-| GaussianLSS | 42.8 | — | — | ⬜ not run |
-| Simple-BEV | 43.0 | — | — | ⬜ not run |
+| **GaussianLSS** (host) | 42.8 | **41.17** | 40/40 (finished) | ≈ near (1.6 under) |
+| **Simple-BEV** | 43.0 | **40.54** | 40/40 (finished) | ≈ near (2.5 under) |
 
 † LSS native setting is 128×352; ours is 224×480 `vis2` — a loose comparison, but it clearly
 clears the paper figure.
