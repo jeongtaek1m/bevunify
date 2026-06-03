@@ -1,11 +1,11 @@
 # @package _global_
 # lift-splat-shoot original recipe: Adam, constant LR (no scheduler).
-# LSS has no canonical budget (nepochs=10000, trains until val plateau); cap by steps.
+# LSS has no canonical budget (trains until val plateau); we cap at 40 epochs.
 optimizer:
   _target_: torch.optim.Adam
   lr: 1e-3
   weight_decay: 1e-7
 scheduler: null                  # constant LR
 trainer:
-  max_steps: 360000
-  max_epochs: -1
+  max_steps: -1
+  max_epochs: 40

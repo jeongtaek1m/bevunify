@@ -1,5 +1,6 @@
 # @package _global_
-# cross_view_transformers original recipe: AdamW + OneCycleLR, step-based (~30k steps).
+# cross_view_transformers recipe: AdamW + OneCycleLR. 30 epochs (OneCycle total_steps is
+# auto-filled from trainer.estimated_stepping_batches since max_steps=-1).
 optimizer:
   lr: 4e-3
   weight_decay: 1e-7
@@ -13,5 +14,5 @@ scheduler:
   anneal_strategy: "cos"          # CVT default (was mistakenly 'linear')
   interval: step
 trainer:
-  max_steps: 16500             # ~30 epochs at effective bs=32 (16 per-GPU × 2-GPU DDP); CARLA train ≈ 17,400 samples
-  max_epochs: -1
+  max_steps: -1
+  max_epochs: 30
