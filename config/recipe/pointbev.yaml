@@ -17,4 +17,4 @@ scheduler:
   interval: step
 trainer:
   max_steps: -1
-  max_epochs: 30
+  max_epochs: 50
