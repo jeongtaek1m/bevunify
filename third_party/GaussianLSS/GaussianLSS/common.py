@@ -59,7 +59,9 @@ def setup_experiment(cfg: DictConfig) -> Tuple[ModelModule, DataModule, Callable
 
 
 def load_backbone(checkpoint_path: str, prefix: str = 'backbone', device=torch.device('cpu'), backbone=None):
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    # weights_only=False required: PyTorch 2.6+ defaults to True and rejects the
+    # omegaconf.DictConfig stored in checkpoint['hyper_parameters'] (we trust own ckpts).
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     state_dict = remove_prefix(checkpoint['state_dict'], prefix)
 
     if backbone is None:
