@@ -22,7 +22,7 @@ class DataModule(pl.LightningDataModule):
         loader_config = dict(self.loader_config)
 
         if loader_config['num_workers'] == 0:
-            loader_config['prefetch_factor'] = 2
+            loader_config['prefetch_factor'] = None
 
         batch_size = loader_config[f"{split}_batch_size"]
         del loader_config["train_batch_size"]

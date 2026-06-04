@@ -72,6 +72,49 @@ CTS_CONDITIONS = {
 }
 
 
+# ── In-process threaded loader ────────────────────────────────────────────────
+
+class ThreadedLoader:
+    """Drop-in DataLoader replacement: same-process + thread pool sample fetching.
+
+    Why: PyTorch DataLoader with num_workers>0 forks worker processes that own a
+    COPY of the dataset+transform from fork-time. VR/CTS mutate transform between
+    each of 631 configs, but workers don't see updates without persistent_workers
+    re-fork — which costs ~60s/config (fork + warm-up). ThreadedLoader keeps
+    everything in main process, so mutations are visible immediately. PIL decode
+    + dict-cache lookups release the GIL, so thread parallelism still scales.
+
+    Exposes .dataset for _ds_iter() so the warm helpers and _mutate_vr/_cts work
+    unchanged."""
+    def __init__(self, dataset, batch_size, num_threads=8, drop_last=False):
+        from concurrent.futures import ThreadPoolExecutor
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.num_threads = num_threads
+        self.drop_last = drop_last
+        self._executor = ThreadPoolExecutor(max_workers=num_threads)
+
+    def __len__(self):
+        n = len(self.dataset)
+        return n // self.batch_size if self.drop_last else (n + self.batch_size - 1) // self.batch_size
+
+    def __iter__(self):
+        from torch.utils.data._utils.collate import default_collate
+        n = len(self.dataset)
+        for start in range(0, n, self.batch_size):
+            end = min(start + self.batch_size, n)
+            if self.drop_last and end - start < self.batch_size:
+                break
+            samples = list(self._executor.map(self.dataset.__getitem__, range(start, end)))
+            yield default_collate(samples)
+
+    def __del__(self):
+        try:
+            self._executor.shutdown(wait=False)
+        except Exception:
+            pass
+
+
 # ── Shared inference ──────────────────────────────────────────────────────────
 
 @torch.no_grad()
@@ -335,6 +378,14 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
     _warm_gt_cache(val_loader, tag="vr-gt-cache")        # 3 GT decodes / sample / config saved
     _warm_image_cache(val_loader, tag="vr-img-cache")    # 6 original-image decodes / sample saved on most configs
 
+    # Switch to ThreadedLoader for the 631-config inference loop. Mutations to
+    # transform.eval_viewpoint_variant etc. are visible immediately (no worker
+    # respawn), eliminating the ~60s/config DataLoader overhead.
+    val_loader = ThreadedLoader(val_loader.dataset,
+                                batch_size=val_loader.batch_size,
+                                num_threads=8)
+    log.info(f"[eval/vr] using ThreadedLoader (8 threads, bs={val_loader.batch_size})")
+
     grid = _build_vr_grid(eval_cfg.axes, eval_cfg.magnitudes,
                           eval_cfg.conditions, eval_cfg.protocols)
     log.info(f"[eval/vr] total configs: {len(grid)}")
@@ -371,6 +422,9 @@ def _run_cts(cfg, eval_cfg, model_module, data_module, out_dir):
 
     _warm_gt_cache(val_loader, tag="cts-gt-cache")          # 3 GT decodes / sample / cond saved
     _warm_image_cache(val_loader, tag="cts-img-cache")      # 6 sedan-image decodes saved on NORMAL+EXT
+    val_loader = ThreadedLoader(val_loader.dataset,
+                                batch_size=val_loader.batch_size,
+                                num_threads=8)
 
     viz_root = (out_dir / "viz") if eval_cfg.viz_enable else None
     results = {}
