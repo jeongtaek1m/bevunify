@@ -443,6 +443,11 @@ def main(cfg):
     eval_cfg = _default_eval_cfg(protocol, cfg)
     if cfg.get("eval"):
         eval_cfg = OmegaConf.merge(eval_cfg, cfg.eval)
+    # Expose cfg.experiment inside eval_cfg so `${experiment.project}` /
+    # `${experiment.uuid}` in `out_dir` template resolve. OmegaConf
+    # interpolation is rooted in the cfg it lives in, so we have to copy.
+    OmegaConf.set_struct(eval_cfg, False)
+    eval_cfg.experiment = cfg.experiment
 
     model_module, data_module, _ = setup_experiment(cfg)
     ckpt_path = cfg.get("ckpt", None)
