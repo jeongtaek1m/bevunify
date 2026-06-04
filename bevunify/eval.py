@@ -390,20 +390,55 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
                           eval_cfg.conditions, eval_cfg.protocols)
     log.info(f"[eval/vr] total configs: {len(grid)}")
 
-    viz_root = (out_dir / "viz") if eval_cfg.viz_enable else None
+    # ── Resume support ────────────────────────────────────────────────────────
+    # Stable path keyed by (project, val_version) so a relaunch (after the
+    # container's ~150min single-process wall-time kill) picks up where we left
+    # off. Atomic write after each config; at most 1 config of work lost per kill.
+    proj = cfg.experiment.project
+    val_ver = cfg.data.version
+    partial_dir = Path(hydra.utils.to_absolute_path(
+        f"${{hydra:runtime.cwd}}/eval_results/{proj}/_partial".replace("${hydra:runtime.cwd}", str(Path.cwd()))
+    ))
+    partial_dir.mkdir(parents=True, exist_ok=True)
+    partial_path = partial_dir / f"vr_{val_ver}.json"
     results = []
+    done_names = set()
+    if partial_path.exists():
+        try:
+            prev = json.loads(partial_path.read_text())
+            results = prev.get("results", [])
+            done_names = {r["name"] for r in results}
+            log.info(f"[eval/vr] RESUME from {partial_path}: {len(done_names)}/{len(grid)} configs already done")
+        except Exception as e:
+            log.warning(f"[eval/vr] partial JSON unreadable ({e}); starting fresh")
+            results = []; done_names = set()
+
+    viz_root = (out_dir / "viz") if eval_cfg.viz_enable else None
     for cfg_item in tqdm(grid, desc="VR configs"):
+        if cfg_item["name"] in done_names:
+            continue
         _mutate_vr(val_loader, cfg_item, eval_cfg.viewpoint_metadata_path)
         iou_v, iou_a = run_inference(model, val_loader, threshold=eval_cfg.threshold,
                                      viz_dir=viz_root, viz_tag=cfg_item["name"])
         rec = dict(cfg_item); rec["iou_vis_gt2"] = iou_v; rec["iou_vis_all"] = iou_a
         results.append(rec)
         log.info(f"  [{cfg_item['name']}] vis>=2={iou_v:.4f} all={iou_a:.4f}")
+        # Atomic partial write (tmp+rename) so a kill mid-write doesn't corrupt the file.
+        tmp = partial_path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(dict(
+            progress=f"{len(results)}/{len(grid)}",
+            ckpt=cfg.get("ckpt"),
+            val_version=val_ver,
+            project=proj,
+            results=results,
+        ), indent=2))
+        tmp.replace(partial_path)
 
     tables = _aggregate_mvrs(results)
     payload = dict(eval_cfg=OmegaConf.to_container(eval_cfg, resolve=True),
                    results=results, mVRS=tables)
     (out_dir / "eval_vr.json").write_text(json.dumps(payload, indent=2))
+    partial_path.unlink(missing_ok=True)   # success → drop partial
     log.info("[eval/vr] === mVRS summary ===")
     for k, v in tables.items():
         log.info(f"  {k}: {v:.4f}")
