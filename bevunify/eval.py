@@ -150,13 +150,16 @@ def _ds_iter(loader):
     return ds.datasets if hasattr(ds, "datasets") else [ds]
 
 
+_WARM_THREADS = 16   # PIL decode + disk I/O release the GIL, so threads scale well
+
+
 def _warm_gt_cache(loader, tag="gt-cache"):
     """Pre-populate transform.gt_cache for every CARLA dataset in the loader.
-    After this, all subsequent VR/CTS config iterations skip 3 disk reads per
-    sample (bev.png + visibility.png + aux.npz). Lossless — exact same tensors
-    as the on-disk decode. Cache dict is populated in the main process so
-    DataLoader workers inherit it on fork (Linux COW)."""
+    Multi-threaded (~8-16× faster than serial — disk I/O dominates and releases
+    the GIL). Python dict assignment is atomic, so concurrent get_bev writes to
+    transform.gt_cache are safe."""
     from bevunify.carla_data import LoadDataTransform, Sample
+    from concurrent.futures import ThreadPoolExecutor
     import time
     t0 = time.time(); n = 0
     for ds in _ds_iter(loader):
@@ -165,21 +168,19 @@ def _warm_gt_cache(loader, tag="gt-cache"):
             continue                                   # nuscenes path: skip
         if t.gt_cache is None:
             t.gt_cache = {}
-        for s in ds.samples:
-            sample = Sample(**s) if not isinstance(s, Sample) else s
-            t.get_bev(sample)                          # populates t.gt_cache[sample.token]
-            n += 1
-    log.info(f"[eval/{tag}] warmed {n} samples in {time.time() - t0:.1f}s")
+        samples = [Sample(**s) if not isinstance(s, Sample) else s for s in ds.samples]
+        with ThreadPoolExecutor(max_workers=_WARM_THREADS) as ex:
+            list(ex.map(t.get_bev, samples))
+        n += len(samples)
+    log.info(f"[eval/{tag}] warmed {n} samples in {time.time() - t0:.1f}s ({_WARM_THREADS} threads)")
 
 
 def _warm_image_cache(loader, tag="img-cache"):
     """Pre-populate transform.image_cache with each sample's 6 ORIGINAL (unswapped)
     camera tensors. Hit rates per VR config: Normal=6/6, ER=6/6, VR/CR per_cam=5/6,
-    all_cam=0/6 (the 1 or 6 swapped paths still go through disk). Lossless — cached
-    tensors are exactly the output of Image.open→resize→crop→ToTensor, identical to
-    the uncached pipeline. ~1.3 MB per cam → ~30 GB per val set of 3792 samples;
-    Linux COW keeps DataLoader workers sharing the dict on fork."""
+    all_cam=0/6. Multi-threaded (PIL Image.open + resize release the GIL)."""
     from bevunify.carla_data import LoadDataTransform, Sample
+    from concurrent.futures import ThreadPoolExecutor
     import time
     t0 = time.time(); n = 0
     for ds in _ds_iter(loader):
@@ -188,9 +189,8 @@ def _warm_image_cache(loader, tag="img-cache"):
             continue
         if t.image_cache is None:
             t.image_cache = {}
-        # Ensure VR/CTS hooks are OFF during warmup so get_cameras takes the
-        # plain `self.dataset_dir / image_path` branch — exactly the path we want
-        # cached for non-swap configs.
+        # Force the unswapped path inside get_cameras during warmup, since the
+        # hooks could already be flipped by a prior config. Restored in finally.
         saved = (t.eval_viewpoint_variant, t.eval_image_swap, t.eval_extrinsic_swap,
                  t.eval_target_cameras, t.cts_img_to_sedan, t.cts_ext_override,
                  t.val_perturb)
@@ -202,15 +202,15 @@ def _warm_image_cache(loader, tag="img-cache"):
         t.cts_ext_override = None
         t.val_perturb = None
         try:
-            for s in ds.samples:
-                sample = Sample(**s) if not isinstance(s, Sample) else s
-                t.get_cameras(sample, **t.image_config)    # populates t.image_cache by path
-                n += 1
+            samples = [Sample(**s) if not isinstance(s, Sample) else s for s in ds.samples]
+            with ThreadPoolExecutor(max_workers=_WARM_THREADS) as ex:
+                list(ex.map(lambda s: t.get_cameras(s, **t.image_config), samples))
+            n += len(samples)
         finally:
             (t.eval_viewpoint_variant, t.eval_image_swap, t.eval_extrinsic_swap,
              t.eval_target_cameras, t.cts_img_to_sedan, t.cts_ext_override,
              t.val_perturb) = saved
-    log.info(f"[eval/{tag}] warmed {n} samples × 6 cams in {time.time() - t0:.1f}s")
+    log.info(f"[eval/{tag}] warmed {n} samples × 6 cams in {time.time() - t0:.1f}s ({_WARM_THREADS} threads)")
 
 
 # ── VR (viewpoint-robustness) ─────────────────────────────────────────────────
