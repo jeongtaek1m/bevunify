@@ -5,15 +5,18 @@
 # In bevunify MultipleLoss a NEGATIVE weight => learnable with base=|weight|: term scaled by
 # base/exp(w) + 0.5*w, w an optimized nn.Parameter (UnifiedModelModule optimizes
 # loss_func.parameters()). So bev=-10 (base 10), center/offset=-0.5 (base 0.5) match native.
+# center/offset use bevunify SUBCLASSES of the host CenterLoss/OffsetLoss that additionally
+# mask to PointBeV's coarse u fine sampled cells (pred['_sampled_mask'] from the wrapper),
+# matching native pointbev (loss*mask).sum()/mask.sum(). Host GaussianLSS/losses.py untouched.
 center_weight: -0.5
 center:
-  _target_: GaussianLSS.losses.CenterLoss
+  _target_: bevunify.losses.SampledCenterLoss
   min_visibility: ${min_visibility}
   key: ${key}
 
 offset_weight: -0.5
 offset:
-  _target_: GaussianLSS.losses.OffsetLoss
+  _target_: bevunify.losses.SampledOffsetLoss
   min_visibility: ${min_visibility}
   key: ${key}
 

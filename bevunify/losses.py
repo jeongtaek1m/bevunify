@@ -8,6 +8,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fvcore.nn import sigmoid_focal_loss
 
+from GaussianLSS.losses import CenterLoss as _HostCenterLoss, OffsetLoss as _HostOffsetLoss
+
 
 class BCESegmentationLoss(nn.Module):
     def __init__(self, min_visibility=0, pos_weight=2.13, key="vehicle"):
@@ -26,6 +28,11 @@ class BCESegmentationLoss(nn.Module):
         if self.min_visibility > 0:
             vis_mask = batch[f"{self.key}_visibility"] >= self.min_visibility
             mask = mask * vis_mask[:, None]
+        # PointBeV (sparse): restrict the loss to the cells the model actually predicted
+        # (coarse u fine sampled mask surfaced by the wrapper). Absent for dense models -> no-op.
+        sampled = pred_dict.get("_sampled_mask")
+        if sampled is not None:
+            mask = mask * (sampled > 0)
         return (loss * mask).sum() / (mask.sum() + eps)
 
 
@@ -100,3 +107,49 @@ class FootprintOffsetLoss(nn.Module):
             footprint = footprint & vis_mask[:, None]
         footprint = footprint.float()
         return (l1 * footprint).sum() / (footprint.sum() + eps)
+
+
+class _SampledSpatialMixin:
+    """Mixin re-implementing the host SpatialRegressionLoss masked-mean (visibility +
+    ignore_index) and ADDITIONALLY restricting to the coarse u fine sampled cells PointBeV
+    actually predicted -- surfaced by the wrapper as pred['_sampled_mask']. When that key
+    is absent the behavior is byte-identical to the host loss, so the host GaussianLSS
+    repo stays untouched; only PointBeV's loss config (seg_center_offset_bce) points here.
+    ``self.loss_fn`` / ``self.min_visibility`` / ``self.ignore_index`` / ``self.key`` are
+    set by the host __init__ this mixin is composed in front of.
+    """
+    _suffix = ""
+    _sigmoid = False
+
+    def forward(self, prediction, batch, eps=1e-6):
+        key = f"{self.key}{self._suffix}"
+        pred = prediction[key]
+        if self._sigmoid:
+            pred = pred.sigmoid()
+        target = batch[key]
+        assert pred.dim() == 4, "Must be a 4D tensor"
+        visibility = batch[f"{self.key}_visibility"]
+
+        mask = torch.ones_like(target, dtype=torch.bool)
+        if self.min_visibility > 0:
+            mask = mask * (visibility >= self.min_visibility)[:, None]
+        if self.ignore_index is not None:
+            mask = mask * (target != self.ignore_index)
+        sampled = prediction.get("_sampled_mask")
+        if sampled is not None:
+            mask = mask * (sampled > 0)
+
+        loss = self.loss_fn(pred, target, reduction="none")
+        return (loss * mask).sum() / (mask.sum() + eps)
+
+
+class SampledCenterLoss(_SampledSpatialMixin, _HostCenterLoss):
+    """Host CenterLoss (MSE on sigmoid center) restricted to PointBeV's sampled cells."""
+    _suffix = "_center"
+    _sigmoid = True
+
+
+class SampledOffsetLoss(_SampledSpatialMixin, _HostOffsetLoss):
+    """Host OffsetLoss (L1 offset) restricted to PointBeV's sampled cells."""
+    _suffix = "_offset"
+    _sigmoid = False

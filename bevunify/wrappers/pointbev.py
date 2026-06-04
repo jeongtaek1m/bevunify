@@ -70,12 +70,21 @@ class PointBeVWrapper(nn.Module):
         preds = self.net(imgs=imgs, rots=rots, trans=trans, intrins=intrins,
                          bev_aug=bev_aug, egoTin_to_seq=egoTin_to_seq)
         bev = preds["bev"]
+        masks = preds.get("masks", {}).get("bev", {})
 
         def take(name):
             x = bev[name][:, -1]                                 # (B,C,200,200) present frame
             return self._fix_axes(x)
 
         out = {self.key: take("binimg")}
+        # PointBeV is SPARSE: only the coarse+fine *sampled* cells are real predictions;
+        # the rest are zero-filled by .dense(). Surface that sampled mask (coarse u fine
+        # union, native pointbev/models/sampled.py) so the loss supervises ONLY those
+        # cells -> matches native (loss*mask).sum()/mask.sum() instead of diluting the
+        # ~5k-cell gradient over the full ~40k grid. In dense val mode the mask is
+        # all-ones (no-op); metrics read pred[key] only, so they are unaffected.
+        if "binimg" in masks:
+            out["_sampled_mask"] = self._fix_axes(masks["binimg"][:, -1]).float()
         if "centerness" in bev:
             # PointBeV's head already applies sigmoid to centerness; the shared CenterLoss
             # re-applies sigmoid -> double sigmoid (center loss froze at ~0.498). Undo the

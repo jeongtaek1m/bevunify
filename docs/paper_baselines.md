@@ -67,7 +67,7 @@ bevunify currently runs at **224×480**, so compare against the 224×480 table a
 ## Reproduction status (bevunify runs)
 
 Target = paper **Setting 2 (vis ≥ 2)** at 224×480. "Reproduced" = our best validation
-`IoU_vehicle@0.5_vis2` reaches the paper number. Last updated **2026-06-03**.
+`IoU_vehicle@0.5_vis2` reaches the paper number. Last updated **2026-06-04**.
 
 - [x] **LSS** — target 32.07† · **38.47** (vis-all 33.80) → met/exceeded. *(40/40 epochs, finished cleanly.)*
 - [x] **CVT** — target 36.0 · **36.08** (vis-all 30.27) → met. *(30/30 epochs, finished; lr 4e-3,
@@ -77,7 +77,7 @@ Target = paper **Setting 2 (vis ≥ 2)** at 224×480. "Reproduced" = our best va
 - [ ] **PointBeV** (single-frame, non-temporal) — target 44.0 · **41.40** (vis-all 35.86) → **under (−2.6)**.
       *(30/30 epochs, finished; batch 8/GPU eff 16 after OOM at 16/GPU. Large batch + unscaled lr → under.)*
 - [ ] **GaussianLSS** (host) — target 42.8 · **41.17** (vis-all 34.73) → ≈ near miss (1.6 under). *(40/40 epochs, finished cleanly; best @ep21. batch 8 = eff 16 on 2 GPU.)*
-- [ ] **Simple-BEV** — target 43.0 · **40.54** (vis-all 35.02) → ≈ near miss. *(40/40 epochs, finished; best @ep22; refcam=CAM_FRONT / −0.5 / balanced-MSE+footprint-offset fixes; 224×480 vs paper 448×800.)*
+- [ ] **Simple-BEV** — target 43.0 · **41.14** (vis-all 35.37) → ≈ near miss (−1.9). *(40/40 epochs, finished; best @ep15, final-epoch 40.60; learnable uncertainty loss weighting (native 20:1:1) + refcam=CAM_FRONT / balanced-MSE + footprint-offset fixes; 224×480 vs paper 448×800. W&B nshyxb8a.)*
 
 | Model | target (S2, vis≥2) | our best vis2 | epochs | status |
 |---|:--:|:--:|:--:|:--:|
@@ -86,7 +86,7 @@ Target = paper **Setting 2 (vis ≥ 2)** at 224×480. "Reproduced" = our best va
 | **LaRa** | 38.9 | **40.71** | 30/30 (finished) | ✅ met |
 | **PointBeV** | 44.0 (single-frame) | **41.40** | 30/30 (finished) | ≈ near (−2.6 under) |
 | **GaussianLSS** (host) | 42.8 | **41.17** | 40/40 (finished) | ≈ near (1.6 under) |
-| **Simple-BEV** | 43.0 | **40.54** | 40/40 (finished) | ≈ near (2.5 under) |
+| **Simple-BEV** | 43.0 | **41.14** | 40/40 (finished) | ≈ near (−1.9) |
 
 † LSS native setting is 128×352; ours is 224×480 `vis2` — a loose comparison, but it clearly
 clears the paper figure.
