@@ -118,13 +118,16 @@ class ThreadedLoader:
 # ── Shared inference ──────────────────────────────────────────────────────────
 
 @torch.no_grad()
-def run_inference(model, loader, threshold=0.5, viz_dir=None, viz_tag=None):
+def run_inference(model, loader, threshold=0.5, viz_dir=None, viz_tag=None, viz_only=False):
     """Returns (iou_vis_gt2, iou_vis_all). Vehicle channel only, sigmoid@thr.
 
     viz_dir + viz_tag (optional): if set, save one 6cam|GT|Pred PNG per batch
     (batch[0]) into viz_dir/<viz_tag>/b{idx:04d}.png. At large val_batch_size only
     one sample per batch is preserved by design — fold this into the inference loop
     so no extra forward pass is needed.
+
+    viz_only: if True, render viz for batch 0 only and return (0.0, 0.0) — used
+    to backfill viz for configs that were resumed mid-run (IoU already in JSON).
     """
     eps = 1e-9
     tp_v = fp_v = fn_v = 0.0
@@ -144,20 +147,22 @@ def run_inference(model, loader, threshold=0.5, viz_dir=None, viz_tag=None):
         gt = batch["vehicle"][:, 0].cpu()                       # (B, H, W) {0,1}
         vis = batch["vehicle_visibility"].cpu()                 # (B, H, W) uint8
 
-        pred_bin = (prob > threshold).float()
-        gt_bin = (gt > 0.5).float()
-        mask_v = (vis >= 2).float()
-
-        tp_v += (pred_bin * gt_bin * mask_v).sum().item()
-        fp_v += (pred_bin * (1 - gt_bin) * mask_v).sum().item()
-        fn_v += ((1 - pred_bin) * gt_bin * mask_v).sum().item()
-        tp_a += (pred_bin * gt_bin).sum().item()
-        fp_a += (pred_bin * (1 - gt_bin)).sum().item()
-        fn_a += ((1 - pred_bin) * gt_bin).sum().item()
+        if not viz_only:
+            pred_bin = (prob > threshold).float()
+            gt_bin = (gt > 0.5).float()
+            mask_v = (vis >= 2).float()
+            tp_v += (pred_bin * gt_bin * mask_v).sum().item()
+            fp_v += (pred_bin * (1 - gt_bin) * mask_v).sum().item()
+            fn_v += ((1 - pred_bin) * gt_bin * mask_v).sum().item()
+            tp_a += (pred_bin * gt_bin).sum().item()
+            fp_a += (pred_bin * (1 - gt_bin)).sum().item()
+            fn_a += ((1 - pred_bin) * gt_bin).sum().item()
 
         if save_viz:
             _save_viz_one(viz_sub / f"b{batch_idx:04d}.png", batch, prob[0].numpy(),
                           gt[0].numpy(), vis[0].numpy(), title=f"{viz_tag}  b{batch_idx}")
+            if viz_only:
+                return 0.0, 0.0
 
     iou_v = tp_v / (tp_v + fp_v + fn_v + eps)
     iou_a = tp_a / (tp_a + fp_a + fn_a + eps)
@@ -424,12 +429,18 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
             results = []; done_names = set()
 
     viz_root = (out_dir / "viz") if eval_cfg.viz_enable else None
+    viz_only_mode = bool(eval_cfg.get("viz_only", False))
+    if viz_only_mode:
+        log.info(f"[eval/vr] VIZ-ONLY mode: rendering all {len(grid)} configs (1 batch each), preserving existing eval_vr.json/_partial")
     for cfg_item in tqdm(grid, desc="VR configs"):
-        if cfg_item["name"] in done_names:
+        if cfg_item["name"] in done_names and not viz_only_mode:
             continue
         _mutate_vr(val_loader, cfg_item, eval_cfg.viewpoint_metadata_path)
         iou_v, iou_a = run_inference(model, val_loader, threshold=eval_cfg.threshold,
-                                     viz_dir=viz_root, viz_tag=cfg_item["name"])
+                                     viz_dir=viz_root, viz_tag=cfg_item["name"],
+                                     viz_only=viz_only_mode)
+        if viz_only_mode:
+            continue
         rec = dict(cfg_item); rec["iou_vis_gt2"] = iou_v; rec["iou_vis_all"] = iou_a
         results.append(rec)
         log.info(f"  [{cfg_item['name']}] vis>=2={iou_v:.4f} all={iou_a:.4f}")
@@ -443,6 +454,10 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
             results=results,
         ), indent=2))
         tmp.replace(partial_path)
+
+    if viz_only_mode:
+        log.info(f"[eval/vr] viz-only complete → {viz_root}/<config>/b0000.png × {len(grid)}")
+        return
 
     tables = _aggregate_mvrs(results)
     payload = dict(eval_cfg=OmegaConf.to_container(eval_cfg, resolve=True),
