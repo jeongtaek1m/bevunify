@@ -408,11 +408,15 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
     ))
     partial_dir.mkdir(parents=True, exist_ok=True)
     partial_path = partial_dir / f"vr_{val_ver}.json"
+    final_path = out_dir / "eval_vr.json"
     results = []
     done_names = set()
-    if partial_path.exists():
+    # Prefer partial JSON (mid-run); fall back to finalized eval_vr.json when re-running
+    # an already-complete VR (e.g. viz backfill) so we don't redo IoU for all 631 configs.
+    resume_src = partial_path if partial_path.exists() else (final_path if final_path.exists() else None)
+    if resume_src is not None:
         try:
-            prev = json.loads(partial_path.read_text())
+            prev = json.loads(resume_src.read_text())
             results = prev.get("results", [])
             # C2 fix: drop stale entries that aren't in the CURRENT grid (e.g. user
             # changed axes/magnitudes between launches). Prevents _aggregate_mvrs from
@@ -420,27 +424,37 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
             grid_names = {c["name"] for c in grid}
             stale = [r for r in results if r["name"] not in grid_names]
             if stale:
-                log.warning(f"[eval/vr] dropping {len(stale)} stale partial entries not in current grid")
+                log.warning(f"[eval/vr] dropping {len(stale)} stale entries not in current grid")
             results = [r for r in results if r["name"] in grid_names]
             done_names = {r["name"] for r in results}
-            log.info(f"[eval/vr] RESUME from {partial_path}: {len(done_names)}/{len(grid)} configs already done")
+            log.info(f"[eval/vr] RESUME from {resume_src.name}: {len(done_names)}/{len(grid)} configs already done")
         except Exception as e:
-            log.warning(f"[eval/vr] partial JSON unreadable ({e}); starting fresh")
+            log.warning(f"[eval/vr] {resume_src.name} unreadable ({e}); starting fresh")
             results = []; done_names = set()
 
     viz_root = (out_dir / "viz") if eval_cfg.viz_enable else None
-    viz_only_mode = bool(eval_cfg.get("viz_only", False))
-    if viz_only_mode:
-        log.info(f"[eval/vr] VIZ-ONLY mode: rendering all {len(grid)} configs (1 batch each), preserving existing eval_vr.json/_partial")
+    force_viz = bool(eval_cfg.get("viz_only", False))  # explicit re-render override
+    n_iou_skip = n_viz_backfill = n_full = 0
     for cfg_item in tqdm(grid, desc="VR configs"):
-        if cfg_item["name"] in done_names and not viz_only_mode:
+        iou_done = cfg_item["name"] in done_names
+        # viz_done check: at least one PNG present in this config's viz subdir.
+        # Tied to the CURRENT out_dir — old runs' viz in deleted dirs don't count.
+        viz_done = (viz_root is None) or any((viz_root / cfg_item["name"]).glob("b*.png"))
+        if force_viz:
+            viz_done = False  # force re-render
+        if iou_done and viz_done:
+            n_iou_skip += 1
             continue
         _mutate_vr(val_loader, cfg_item, eval_cfg.viewpoint_metadata_path)
+        # viz-only forward (skip IoU recompute, ~30× faster) when IoU already known
+        viz_only_this = force_viz or (iou_done and not viz_done)
         iou_v, iou_a = run_inference(model, val_loader, threshold=eval_cfg.threshold,
                                      viz_dir=viz_root, viz_tag=cfg_item["name"],
-                                     viz_only=viz_only_mode)
-        if viz_only_mode:
-            continue
+                                     viz_only=viz_only_this)
+        if iou_done or viz_only_this:
+            n_viz_backfill += 1
+            continue                          # IoU already in results, viz now rendered
+        n_full += 1
         rec = dict(cfg_item); rec["iou_vis_gt2"] = iou_v; rec["iou_vis_all"] = iou_a
         results.append(rec)
         log.info(f"  [{cfg_item['name']}] vis>=2={iou_v:.4f} all={iou_a:.4f}")
@@ -454,9 +468,12 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
             results=results,
         ), indent=2))
         tmp.replace(partial_path)
+    log.info(f"[eval/vr] config breakdown: full={n_full}  viz-backfill={n_viz_backfill}  skipped={n_iou_skip}")
 
-    if viz_only_mode:
-        log.info(f"[eval/vr] viz-only complete → {viz_root}/<config>/b0000.png × {len(grid)}")
+    if len(results) == len(done_names) and n_full == 0:
+        # No new IoU computed — VR was already complete from resume.
+        # Skip eval_vr.json overwrite + partial unlink to preserve existing finalized state.
+        log.info("[eval/vr] no new IoU configs — preserving existing eval_vr.json")
         return
 
     tables = _aggregate_mvrs(results)
