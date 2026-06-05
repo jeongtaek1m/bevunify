@@ -244,7 +244,14 @@ class LoadDataTransform(torchvision.transforms.ToTensor):
                 image_new = image_new.crop((0, top_crop, image_new.width, image_new.height))
                 img_t = self.img_transform(image_new)
                 image_w, image_h = image.width, image.height
-                if self.image_cache is not None:
+                # Cache ORIGINAL paths only. VR-swap / CTS-sedan-img / val_perturb hit
+                # unique-per-(variant,cam,sample) paths and would explode the cache by
+                # ~1.3 MB × (per_cam 3792 + all_cam 22752) × 30 configs ≈ 500-600 GB,
+                # blowing past the container's 400 GiB cgroup memory.max → silent OOM.
+                # Matches the class docstring and _warm_image_cache contract.
+                is_original = not (do_swap_img or self.cts_img_to_sedan
+                                   or self.val_perturb is not None)
+                if self.image_cache is not None and is_original:
                     self.image_cache[cache_key] = (img_t, image_w, image_h)
 
             I = np.float32(I_original)
