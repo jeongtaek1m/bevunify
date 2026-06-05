@@ -395,9 +395,11 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
     # container's ~150min single-process wall-time kill) picks up where we left
     # off. Atomic write after each config; at most 1 config of work lost per kill.
     proj = cfg.experiment.project
-    val_ver = cfg.data.version
+    # C1 fix: key partial JSON by the VAL version (not the train-side data.version) so
+    # different val platforms (sedan/suv/bus) don't clash on the same partial file.
+    val_ver = cfg.data.get("val_version") or cfg.data.version
     partial_dir = Path(hydra.utils.to_absolute_path(
-        f"${{hydra:runtime.cwd}}/eval_results/{proj}/_partial".replace("${hydra:runtime.cwd}", str(Path.cwd()))
+        f"eval_results/{proj}/_partial"
     ))
     partial_dir.mkdir(parents=True, exist_ok=True)
     partial_path = partial_dir / f"vr_{val_ver}.json"
@@ -407,6 +409,14 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
         try:
             prev = json.loads(partial_path.read_text())
             results = prev.get("results", [])
+            # C2 fix: drop stale entries that aren't in the CURRENT grid (e.g. user
+            # changed axes/magnitudes between launches). Prevents _aggregate_mvrs from
+            # silently averaging in obsolete configs.
+            grid_names = {c["name"] for c in grid}
+            stale = [r for r in results if r["name"] not in grid_names]
+            if stale:
+                log.warning(f"[eval/vr] dropping {len(stale)} stale partial entries not in current grid")
+            results = [r for r in results if r["name"] in grid_names]
             done_names = {r["name"] for r in results}
             log.info(f"[eval/vr] RESUME from {partial_path}: {len(done_names)}/{len(grid)} configs already done")
         except Exception as e:
