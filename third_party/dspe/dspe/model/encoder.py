@@ -370,14 +370,14 @@ class CrossViewAttention(nn.Module):
 
         world = bev.grid[:2]                                                    # 2 H W
         w_embed = self.bev_embed(world[None])                                   # 1 d H W
-        # PAPER FIX (Sun et al., IROS2024 "Robust Multi-Camera BEV Perception"): DSPE REPLACES
-        # CVT's camera positional encoding and decouples from extrinsics. The image key already
-        # uses p (no - c_embed); the BEV query must likewise be the ABSOLUTE-world embedding so it
-        # matches the key's global term p^global = T K^-1 c. The original `w_embed - c_embed` left
-        # the query in CVT's camera-RELATIVE frame, mismatching the absolute-world key -> broken
-        # cross-attention geometry (this is why DSPE scored below CVT). Query is camera-independent.
-        bev_embed = w_embed / (w_embed.norm(dim=1, keepdim=True) + 1e-7)         # 1 d H W (absolute world)
-        query_pos = repeat(bev_embed.squeeze(0), 'd h w -> b n d h w', b=b, n=n) # b n d H W (camera-independent)
+        # The BEV query keeps CVT's camera-aware embedding (w_embed - c_embed). NOTE: an earlier
+        # attempt to make it absolute-world (drop - c_embed, on the reading that "DSPE replaces the
+        # camera PE") empirically DESTABILIZED training — fix@lr4e-3 diverged at the OneCycle peak
+        # while the original survives (0.328). The paper's DSPE/IPPE replaces only the IMAGE-side
+        # (key) positional encoding (Eq 1-6 are all image coords); the BEV query is left as CVT's.
+        bev_embed = w_embed - c_embed                                           # (b n) d H W
+        bev_embed = bev_embed / (bev_embed.norm(dim=1, keepdim=True) + 1e-7)    # (b n) d H W
+        query_pos = rearrange(bev_embed, '(b n) ... -> b n ...', b=b, n=n)      # b n d H W
 
         feature_flat = rearrange(feature, 'b n ... -> (b n) ...')               # (b n) d h w   "φ"
 
