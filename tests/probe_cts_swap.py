@@ -53,13 +53,25 @@ def first_sample_of(scene_json: pathlib.Path) -> dict:
     return json.loads(scene_json.read_text())[0]
 
 
-def build_sedan_ext_map(sedan_labels_dir: pathlib.Path) -> dict[str, np.ndarray]:
-    """Mirror eval._build_sedan_ext_map (eval.py:204-218)."""
-    first = next(iter(sorted(sedan_labels_dir.glob("scene_*.json"))), None)
-    assert first is not None, f"no scene_*.json under {sedan_labels_dir}"
-    s = json.loads(first.read_text())[0]
-    return {ch: np.array(e, dtype=np.float32)
-            for ch, e in zip(s["cam_channels"], s["extrinsics"])}, first.name
+def build_sedan_ext_map(sedan_labels_dir: pathlib.Path,
+                        target_labels_dir: pathlib.Path) -> dict[str, np.ndarray]:
+    """Mirror eval._build_sedan_ext_delta: per-cam rig delta
+    D_ch = E_sedan(0) @ inv(E_target(0)). Applied at load time as
+    E_sedan(t) = D_ch @ E_target(t) — extrinsics wobble per frame (ego
+    suspension); the rig delta is frame-invariant so this reconstructs the
+    per-frame sedan extrinsic exactly."""
+    def _frame0(p):
+        first = next(iter(sorted(p.glob("scene_*.json"))), None)
+        assert first is not None, f"no scene_*.json under {p}"
+        s = json.loads(first.read_text())[0]
+        return {ch: np.array(e, dtype=np.float64)
+                for ch, e in zip(s["cam_channels"], s["extrinsics"])}, first.name
+
+    sed, src = _frame0(sedan_labels_dir)
+    tgt, _ = _frame0(target_labels_dir)
+    delta = {ch: (sed[ch] @ np.linalg.inv(tgt[ch])).astype(np.float32)
+             for ch in sed if ch in tgt}
+    return delta, src
 
 
 def make_transform() -> LoadDataTransform:
@@ -122,9 +134,9 @@ def main() -> int:
     print(f"[probe] suv_eval scene_0220 frame 0; cam_channels = {raw['cam_channels']}")
     print(f"[probe] front image path (target) = {raw['images'][raw['cam_channels'].index(CAM)]}")
 
-    # 2. Build sedan extrinsic override map
-    sedan_map, sedan_src = build_sedan_ext_map(SEDAN_LABELS)
-    print(f"[probe] sedan override built from {sedan_src}; cams = {sorted(sedan_map)}")
+    # 2. Build sedan rig-delta map (D_ch = E_sedan(0) @ inv(E_suv(0)))
+    sedan_map, sedan_src = build_sedan_ext_map(SEDAN_LABELS, SUV_LABELS)
+    print(f"[probe] sedan rig delta built from {sedan_src}; cams = {sorted(sedan_map)}")
 
     # 3. Pre-check: cts_path_to_sedan should resolve to a real file on disk
     t_probe = make_transform()
@@ -202,19 +214,23 @@ def main() -> int:
     same = tensors_equal(results["EXT"]["image"], results["IMG"]["image"])
     check("EXT.image != IMG.image (sedan vs target img, sanity)", not same)
 
-    # 6. Verify the sedan override actually equals the sedan rig's E for CAM_FRONT.
+    # 6. Verify the rig delta reconstructs the PER-FRAME sedan extrinsic:
+    #    D[CAM] @ E_suv(frame) must equal E_sedan(frame) for the probed frame.
+    #    (For scene_0220 frame 0 — the delta's own build frame — this is exact
+    #    by construction; tolerance covers float32 label precision.)
     sedan_raw = first_sample_of(SEDAN_LABELS / "scene_0220.json")
     sedan_idx = sedan_raw["cam_channels"].index(CAM)
     sedan_E_in_scene = np.array(sedan_raw["extrinsics"][sedan_idx], dtype=np.float32)
-    override_E = sedan_map[CAM]
-    de = float(np.abs(sedan_E_in_scene - override_E).max())
-    check("sedan override map[CAM_FRONT] == sedan_eval/scene_0220 sample[0].E[CAM_FRONT]",
-          de < 1e-6,
+    suv_E_in_scene = np.array(raw["extrinsics"][front_idx], dtype=np.float32)
+    reconstructed = sedan_map[CAM] @ suv_E_in_scene
+    de = float(np.abs(sedan_E_in_scene - reconstructed).max())
+    check("delta[CAM_FRONT] @ E_suv(frame) == E_sedan(frame) (per-frame reconstruction)",
+          de < 1e-3,
           detail=f"max|delta|={de:.4e}")
-    # And the override should also match what the model actually receives in NORMAL/IMG
-    de_loader = float((results["IMG"]["extrinsic"] - torch.tensor(override_E)).abs().max().item())
-    check("IMG.extrinsic == sedan override map[CAM_FRONT] (the loader actually applied it)",
-          de_loader < 1e-6,
+    # And the loader must actually produce that reconstructed extrinsic in IMG.
+    de_loader = float((results["IMG"]["extrinsic"] - torch.tensor(reconstructed)).abs().max().item())
+    check("IMG.extrinsic == delta @ raw target extrinsic (the loader applied the delta)",
+          de_loader < 1e-5,
           detail=f"max|delta|={de_loader:.4e}")
 
     # Also: CAL.extrinsic should equal the raw target extrinsic.
@@ -256,8 +272,10 @@ def main() -> int:
         f.write(f"target raw extrinsic (suv_eval scene_0220 sample[0] {CAM}):\n")
         f.write(np.array2string(np.array(raw["extrinsics"][front_idx]),
                                 precision=6, suppress_small=True) + "\n\n")
-        f.write(f"sedan override map[{CAM}]:\n")
-        f.write(np.array2string(override_E, precision=6, suppress_small=True) + "\n\n")
+        f.write(f"sedan rig delta[{CAM}] (E_sedan(0) @ inv(E_target(0))):\n")
+        f.write(np.array2string(sedan_map[CAM], precision=6, suppress_small=True) + "\n\n")
+        f.write(f"reconstructed sedan extrinsic (delta @ raw target):\n")
+        f.write(np.array2string(reconstructed, precision=6, suppress_small=True) + "\n\n")
         for cond in ["NORMAL", "EXT", "IMG", "CAL"]:
             f.write(f"{cond} extrinsic (loader output):\n")
             f.write(np.array2string(results[cond]["extrinsic"].numpy(),

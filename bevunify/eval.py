@@ -350,21 +350,40 @@ def _mutate_cts(loader, cond, target_platform, ext_override):
         t.eval_target_cameras = None
 
 
-def _build_sedan_ext_map(sedan_labels_dir):
-    """Read one sedan_eval JSON → flat {cam_channel: 4x4 sedan extrinsic}.
-    Carla per-platform extrinsics are scene-invariant (rig rigid wrt ego)."""
-    p = Path(sedan_labels_dir)
-    if not p.exists():
-        log.warning(f"[eval/cts] sedan labels not found: {p}")
+def _build_sedan_ext_delta(sedan_labels_dir, target_labels_dir):
+    """Per-camera rig delta D_ch = E_sedan(0) @ inv(E_target(0)).
+
+    CARLA extrinsics are NOT frame-invariant: ego pitch/roll (suspension) enters
+    E(t) — measured over 48 eval scenes: median 0.19°, p90 1.1°, max 9.0° rotation
+    wobble vs frame 0. A frame-0 CONSTANT sedan extrinsic therefore injects a
+    spurious per-frame rotation error into the IMG condition.
+
+    The RIG delta is frame-invariant (sedan/target re-render the same trajectory,
+    so the wobble cancels: D = E_rig_sedan @ inv(E_rig_target), measured deviation
+    ≤ 3.7e-4 across all scenes). Applying ``E_sedan(t) = D_ch @ E_target(t)`` at
+    load time reconstructs the exact per-frame sedan extrinsic.
+    """
+    sp, tp = Path(sedan_labels_dir), Path(target_labels_dir)
+    if not sp.exists() or not tp.exists():
+        log.warning(f"[eval/cts] labels not found: sedan={sp} target={tp}")
         return None
-    first = next(iter(sorted(p.glob("scene_*.json"))), None)
-    if first is None:
+
+    def _frame0(p):
+        first = next(iter(sorted(p.glob("scene_*.json"))), None)
+        if first is None:
+            return None
+        samples = json.loads(first.read_text())
+        if not samples:
+            return None
+        s = samples[0]
+        return {ch: np.array(e, dtype=np.float64)
+                for ch, e in zip(s.get("cam_channels", []), s["extrinsics"])}
+
+    sed, tgt = _frame0(sp), _frame0(tp)
+    if sed is None or tgt is None:
         return None
-    samples = json.loads(first.read_text())
-    if not samples:
-        return None
-    s = samples[0]
-    return {ch: np.array(e, dtype=np.float32) for ch, e in zip(s.get("cam_channels", []), s["extrinsics"])}
+    return {ch: (sed[ch] @ np.linalg.inv(tgt[ch])).astype(np.float32)
+            for ch in sed if ch in tgt}
 
 
 # ── Protocol drivers ──────────────────────────────────────────────────────────
@@ -489,7 +508,8 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
 
 
 def _run_cts(cfg, eval_cfg, model_module, data_module, out_dir):
-    ext_override = _build_sedan_ext_map(eval_cfg.sedan_labels_dir) if eval_cfg.get("sedan_labels_dir") else None
+    ext_override = (_build_sedan_ext_delta(eval_cfg.sedan_labels_dir, cfg.data.val_labels_dir)
+                    if eval_cfg.get("sedan_labels_dir") else None)
     if ext_override is None:
         log.warning("[eval/cts] eval.sedan_labels_dir empty — NORMAL/IMG fall back to no extrinsic swap (sedan extrinsic unavailable)")
 

@@ -86,7 +86,9 @@ class LoadDataTransform(torchvision.transforms.ToTensor):
 
     Cross-platform transfer (CTS):
       cts_img_to_sedan=True  → load sedan RGB instead of target's
-      cts_ext_override={cam: 4x4} → replace target extrinsic with sedan's
+      cts_ext_override={cam: 4x4 rig delta D} → E_sedan(t) = D @ E_target(t)
+        (per-frame sedan extrinsic via frame-invariant rig delta; see
+        eval._build_sedan_ext_delta)
     """
 
     def __init__(self, dataset_dir, labels_dir, image_config, num_classes,
@@ -275,11 +277,17 @@ class LoadDataTransform(torchvision.transforms.ToTensor):
                     correction = self._extrinsic_correction(sample.scene, cam_channel)
                     extrinsics[k] = torch.tensor(correction.astype(np.float32)) @ extrinsics[k]
 
-        # CTS — replace target extrinsic with sedan's (constant per cam)
+        # CTS — apply the sedan rig DELTA: E_sedan(t) = D_ch @ E_target(t).
+        # cts_ext_override holds D_ch = E_sedan(0) @ inv(E_target(0)) per camera
+        # (frame-invariant; built by eval._build_sedan_ext_delta). Multiplying the
+        # per-frame target extrinsic reconstructs the per-frame sedan extrinsic —
+        # a frame-0 constant replacement would inject the ego suspension wobble
+        # (up to 9° rotation) as spurious calibration error.
         if self.cts_ext_override is not None and cam_channels:
             for k, cam_channel in enumerate(cam_channels):
                 if cam_channel in self.cts_ext_override:
-                    extrinsics[k] = torch.tensor(np.float32(self.cts_ext_override[cam_channel]))
+                    D = torch.tensor(np.float32(self.cts_ext_override[cam_channel]))
+                    extrinsics[k] = D @ extrinsics[k]
 
         # Train-only extrinsic noise
         if self.extrinsic_noise_deg > 0.0 and self.val_perturb is None:
