@@ -24,7 +24,7 @@ def main():
         "experiment.save_dir=/tmp/bevunify_smoke/",
         "loader.val_batch_size=1",
         "loader.num_workers=2",   # host get_split forces prefetch_factor; needs workers>0
-    ]
+    ] + sys.argv[2:]              # extra hydra overrides, e.g. data.dataset_dir=... data.version=v1.0-mini
     with initialize_config_dir(version_base="1.3", config_dir=CONFIG_DIR):
         cfg = compose(config_name="config", overrides=overrides)
         setup_config(cfg)                      # resolve while hydra context is active

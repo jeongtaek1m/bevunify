@@ -28,7 +28,13 @@ class DataModule(pl.LightningDataModule):
         del loader_config["train_batch_size"]
         del loader_config["val_batch_size"]
 
-        return torch.utils.data.DataLoader(dataset, shuffle=shuffle, batch_size=batch_size, **loader_config)
+        # Optional train-only drop_last (default off -> other models unchanged). Avoids a
+        # size-1 trailing TRAIN batch, which breaks BatchNorm on globally-pooled features
+        # (e.g. EAFormer's ASPP image-pooling branch). Never drops val samples.
+        drop_last = bool(loader_config.pop("drop_last", False)) and split == "train"
+
+        return torch.utils.data.DataLoader(dataset, shuffle=shuffle, batch_size=batch_size,
+                                           drop_last=drop_last, **loader_config)
 
     def train_dataloader(self, shuffle=True):
         return self.get_split('train', loader=True, shuffle=shuffle)

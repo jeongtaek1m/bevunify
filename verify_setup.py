@@ -15,7 +15,7 @@ import bevunify  # noqa: F401  (bootstraps GaussianLSS path)
 from hydra import initialize_config_dir, compose
 from hydra.core.global_hydra import GlobalHydra
 
-EXPERIMENTS = ["gaussianlss", "cvt", "lara", "pointbev", "lss", "simplebev"]
+EXPERIMENTS = ["gaussianlss", "cvt", "eaformer", "lara", "pointbev", "lss", "simplebev"]
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
 
 
@@ -55,7 +55,8 @@ def main():
     print("\n" + "=" * 70, "\nWRAPPER MODULE IMPORTS\n", "=" * 70, sep="")
     for mod in ["bevunify.common", "bevunify.transforms_toggle", "bevunify.data_toggle",
                 "bevunify.wrappers.geom", "bevunify.wrappers.repo_compose",
-                "bevunify.wrappers.cvt", "bevunify.wrappers.lara", "bevunify.wrappers.pointbev",
+                "bevunify.wrappers.cvt", "bevunify.wrappers.eaformer",
+                "bevunify.wrappers.lara", "bevunify.wrappers.pointbev",
                 "bevunify.wrappers.lss", "bevunify.wrappers.simplebev"]:
         try:
             importlib.import_module(mod)
