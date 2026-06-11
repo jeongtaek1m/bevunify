@@ -1,0 +1,60 @@
+_target_: eaformer.model.cvt.CrossViewTransformer
+
+dim_last: 64
+
+outputs:
+  bev: [0, 1]
+
+encoder:
+  _target_: eaformer.model.encoder.Encoder
+
+  dim: 128
+  scale: 1.0
+  middle: [2, 2]
+
+  backbone:
+    _target_: eaformer.model.backbones.efficientnet.EfficientNetExtractor
+
+    model_name: efficientnet-b4
+    layer_names: ['reduction_2', 'reduction_4']
+    image_height: ${data.image.h}
+    image_width: ${data.image.w}
+
+  cross_view:
+    heads: 4
+    dim_head: 32
+    qkv_bias: True
+    skip: True
+    no_image_features: False
+
+    image_height: ${data.image.h}
+    image_width: ${data.image.w}
+
+    # --- Epipolar Attention Fields (EAFormer) ---
+    use_eaf: True
+    use_pe: False                 # flagship: no learnable positional encoding
+    eaf_mode: multiplicative      # paper Eq.2 softmax(W ⊙ QK^T); 'additive' = log-bias (stable)
+    eaf_lambda: 1.0               # distance-strength λ (paper default 1.0)
+    eaf_learnable_lambda: True    # paper "learnable distance strength"
+    eaf_bev_range_m: 1000.0       # PIXEL-unit calib: sigma_px=1/(λ·λ_qi), λ_qi=(d+d0)/range. scale-consistent
+    eaf_d0: 12.0                  # near-cell softening (meters); higher -> gentler near/far taper
+    eaf_clamp_qi: [0.01, 0.12]    # clamp on λ_qi -> sigma_px in ~[8, 100] px (480px-wide image)
+
+  bev_embedding:
+    sigma: 1.0
+
+    bev_height: ${data.bev.h}
+    bev_width: ${data.bev.w}
+    h_meters: ${data.bev.h_meters}
+    w_meters: ${data.bev.w_meters}
+    offset: ${data.bev.offset}
+
+    decoder_blocks: ${model.decoder.blocks}
+
+decoder:
+  _target_: eaformer.model.decoder.ASPPDecoder   # three ASPP blocks (supp), 25->50->100->200
+
+  dim: ${model.encoder.dim}
+  blocks: [128, 128, 64]
+  atrous_rates: [2, 4, 6]                         # modest rates for coarse BEV maps
+  dropout: 0.1

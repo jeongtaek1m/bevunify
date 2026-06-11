@@ -1,0 +1,32 @@
+# @package _global_
+# python -m bevunify.train +experiment=eaformer
+# EAFormer: CVT fork with Epipolar Attention Fields + ASPP head (vehicle segmentation).
+defaults:
+  - override /model: eaformer
+  - override /gt: seg_center          # seg + center (same GT as CVT)
+  - override /loss: seg_focal_center  # focal seg + focal center (on logits)
+  - override /recipe: eaformer        # AdamW + OneCycleLR, 30 epochs
+  - override /metrics: bev_metrics
+  - override /augmentation: none      # set warp|extrin_noise|warp_extrin to augment
+
+data:
+  split_intrin_extrin: True           # forward needs intrinsics + extrinsics + cam_idx
+  vehicle: True
+
+loader:
+  drop_last: True                     # drop size-1 trailing TRAIN batch (ASPP BatchNorm needs >1); val unaffected
+
+loss:
+  center_weight: 0.1                  # matches CVT seg_focal_center default
+
+# Metrics = the unified IoU@0.5 keys (bev_metrics), same as every other model.
+# For the paper's max-over-{0.4,0.45,0.5} number, run tests/eval_threshold_sweep.py
+# on a checkpoint post-hoc instead of polluting the training metrics.
+
+experiment:
+  project: bevseg-eaformer
+  train_viz_interval: 0       # off (no per-step 6cam|GT|pred images on wandb)
+  val_viz_interval: 9999      # -> only batch 0 per val epoch = 1 image/epoch (minimal)
+
+key: vehicle
+val_only: False

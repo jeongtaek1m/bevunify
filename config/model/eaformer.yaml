@@ -1,0 +1,20 @@
+_target_: bevunify.wrappers.eaformer.EAFormerWrapper
+key: ${key}
+repo_root: third_party/eaformer
+config_name: config
+center: true
+backbone: efficientnet-b4
+image_h: ${data.image.h}
+image_w: ${data.image.w}
+
+# EAF ablation knobs. null -> keep the fork-config default
+# (third_party/eaformer/config/model/eaformer.yaml). Override from CLI, e.g.
+#   model.eaf_mode=additive   model.use_eaf=false   model.use_pe=true
+use_eaf: null
+use_pe: null
+eaf_mode: null
+eaf_lambda: null
+eaf_learnable_lambda: null
+eaf_bev_range_m: null
+eaf_d0: null
+eaf_clamp_qi: null

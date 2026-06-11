@@ -1,0 +1,15 @@
+visible_weight: 1.0
+visible:
+  _target_: eaformer.losses.BinarySegmentationLoss
+
+  label_indices: ${data.label_indices}
+  gamma: 2.0
+  alpha: -1.0
+  min_visibility: 2
+
+center_weight: 0.1
+center:
+  _target_: eaformer.losses.CenterLoss
+
+  gamma: 2.0
+  min_visibility: 2

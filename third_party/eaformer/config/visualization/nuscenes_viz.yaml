@@ -1,0 +1,2 @@
+_target_: eaformer.visualizations.nuscenes_viz.NuScenesViz
+label_indices: ${data.label_indices}
