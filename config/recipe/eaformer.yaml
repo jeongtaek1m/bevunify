@@ -1,8 +1,15 @@
 # @package _global_
-# EAFormer recipe — paper-exact (AdamW lr 4e-3 + OneCycleLR cos, 30 epochs, effective
-# batch 16). Run on ONE GPU with the default per-GPU batch 16 so effective batch == 16:
-#   CUDA_VISIBLE_DEVICES=0 python -m bevunify.train +experiment=eaformer trainer.devices=1
-# (2-GPU DDP would double the effective batch and halve the update count vs the paper.)
+# EAFormer recipe. TWO documented protocols (per-GPU batch stays 16 in both):
+#
+#  A) paper-exact (defaults below): 1 GPU, effective batch 16, lr 4e-3, 30 ep
+#       CUDA_VISIBLE_DEVICES=0 python -m bevunify.train +experiment=eaformer trainer.devices=1
+#  B) 2-GPU DDP: effective batch 32 -> sqrt-scale lr; epochs per comparison need:
+#       30 ep (epoch-parity with the other models' 30-ep runs):
+#         python -m bevunify.train +experiment=eaformer optimizer.lr=5.7e-3
+#       60 ep (update-count parity with the paper's ~52.7k steps):
+#         python -m bevunify.train +experiment=eaformer optimizer.lr=5.7e-3 trainer.max_epochs=60
+#
+# Always state the protocol next to any reported number (A vs B are not interchangeable).
 # OneCycle total_steps auto-fills from trainer.estimated_stepping_batches (max_steps=-1).
 optimizer:
   lr: 4e-3

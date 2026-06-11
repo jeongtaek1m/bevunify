@@ -2,20 +2,30 @@
 {0.4, 0.45, 0.5} at vis>=2). Training logs the unified IoU@0.5 only; run this on a
 checkpoint when a paper-comparable number is needed.
 
-    $PY tests/eval_threshold_sweep.py <experiment> <ckpt>
+WARNING: the MAX-over-thresholds number is NOT comparable to the unified IoU@0.5
+table (it is >= @0.5 by construction). Use it ONLY against the papers' reported
+numbers — never mix it into the cross-model @0.5 comparison.
+
+    $PY tests/eval_threshold_sweep.py <experiment> <ckpt> [--dataset_dir /abs/nuscenes]
     e.g. $PY tests/eval_threshold_sweep.py eaformer logs/bevseg-eaformer/<run>/checkpoints/last.ckpt
 """
-import os, sys, torch
-exp, ckpt = sys.argv[1], sys.argv[2]
+import argparse, os, torch
+ap = argparse.ArgumentParser()
+ap.add_argument("experiment")
+ap.add_argument("ckpt")
+ap.add_argument("--dataset_dir", default=os.environ.get("NUSCENES_DIR", "./data/nuscenes"))
+ap.add_argument("--labels_dir", default=None, help="default: <dataset_dir>/labels_aug")
+args = ap.parse_args()
+exp, ckpt, D = args.experiment, args.ckpt, args.dataset_dir
+L = args.labels_dir or f"{D}/labels_aug"
 import bevunify
 from hydra import initialize_config_dir, compose
 from bevunify.common import setup_config, setup_model_module, setup_data_module
 CFG=os.path.abspath(os.path.join(os.path.dirname(bevunify.__file__),"..","config"))
-D="/NHNHOME/WORKSPACE/0526040099_A/datasets/nuscenes"
 thr=torch.tensor([0.30,0.35,0.40,0.45,0.50])
 with initialize_config_dir(version_base="1.3", config_dir=CFG):
     cfg=compose(config_name="config", overrides=[f"+experiment={exp}",
-        f"data.dataset_dir={D}", f"data.labels_dir={D}/labels_aug",
+        f"data.dataset_dir={D}", f"data.labels_dir={L}",
         "experiment.logger=csv","experiment.save_dir=/tmp/eaf_eval/",
         "loader.val_batch_size=12","loader.num_workers=8","trainer.devices=1"])
     setup_config(cfg); mm=setup_model_module(cfg); dm=setup_data_module(cfg)
