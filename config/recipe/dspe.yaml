@@ -3,15 +3,16 @@
 #   - 50 epochs        : from the PAPER (IV.B "batch size of 4 per GPU spanning 50 epochs").
 #   - AdamW + OneCycle : from the PAPER (no LR value given there).
 #   - lr: the paper gives NO numeric LR. The iros2024 CODE used 1.2e-2 (tuned for SimBEV/
-#     CARLA) which ran too hot on nuScenes (val IoU bounced + plateaued below CVT). Use
-#     4e-3 — CVT's own value, since DSPE is a CVT-family EfficientNet-b4 + attention model.
+#     CARLA) which ran too hot on nuScenes; 4e-3 (CVT's value) made the ABSOLUTE-query
+#     variant diverge at the OneCycle peak. Paper-faithful PE (absolute query/key,
+#     concat local|global, D depth bins, multi-scale) trains at 2e-3.
 #   - wd 1e-7, OneCycle div10/pct0.3/final10, grad_clip 5.0 : from the iros2024 CODE.
 # Per-GPU batch is bevunify's default 16 (same as CVT; not set here). Paper's effective
 # batch ~32 (4/GPU x 8 GPU) is matched by running on 2 GPUs (16 x 2). Trained CLEAN
 # (augmentation: none) — extrinsic noise is an EVAL-time robustness test, not a train aug.
 optimizer:
   _target_: torch.optim.AdamW
-  lr: 4e-3
+  lr: 2e-3
   weight_decay: 1e-7
 scheduler:
   div_factor: 10

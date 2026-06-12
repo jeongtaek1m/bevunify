@@ -241,6 +241,9 @@ class CrossViewAttention(nn.Module):
         bev_self_num_head: int = 8,
         bev_self_ffn_dim: int = None,
         bev_self_dropout: float = 0.1,
+        pe_depth_bins: int = 16,
+        pe_depth_min: float = 1.0,
+        pe_depth_max: float = 61.2,
     ):
         super().__init__()
 
@@ -250,6 +253,12 @@ class CrossViewAttention(nn.Module):
         image_plane[:, :, 1] *= image_height
 
         self.register_buffer('image_plane', image_plane, persistent=False)
+
+        # D depth bins (paper Sec III-B: each 2D coordinate maps to D 3D points c_d).
+        # PETR-style linear discretization along the viewing ray.
+        self.register_buffer('pe_depths',
+                             torch.linspace(float(pe_depth_min), float(pe_depth_max),
+                                            int(pe_depth_bins)), persistent=False)
 
         self.feature_linear = nn.Sequential(
             nn.BatchNorm2d(feat_dim),
@@ -264,47 +273,40 @@ class CrossViewAttention(nn.Module):
                 nn.Conv2d(feat_dim, dim, 1, bias=False))
 
         self.bev_embed = nn.Conv2d(2, dim, 1)
-        # self.img_embed = nn.Conv2d(4, dim, 1, bias=False)
-        self.cam_embed = nn.Conv2d(4, dim, 1, bias=False)
-
-        ### self attention
-        # if bev_self_ffn_dim is None:
-        #     bev_self_ffn_dim = dim * 2
-        # self.bev_self_atten = BEVSelfAttnBlock(
-        #     d_model=dim,
-        #     nhead=bev_self_num_head,
-        #     dim_feedforward=bev_self_ffn_dim,
-        #     dropout=bev_self_dropout,
-        # )
-
 
         self.cross_attend = CrossAttention(dim, heads, dim_head, qkv_bias)
         self.skip = skip
 
-        # --- Dual‑Space Positional Encoding MLPs ---
-
+        # --- Dual-Space Positional Encoding MLPs (paper Sec III-B) ---
+        # local  : camera-frame frustum points (K^-1 only — extrinsic-FREE)
+        # global : the same points in the reference frame (extrinsics applied)
+        # Each half outputs dim/2; the final PE is their CONCAT (paper Eq. 5) so that
+        # under extrinsic noise only the global half degrades while the clean local
+        # channels survive in their own subspace (no learned fusion mixing them).
+        assert dim % 2 == 0, "dim must be even for Concat(local, global) PE halves"
+        d_in = int(pe_depth_bins) * 3
         self.local_pe = nn.Sequential(
-            nn.LayerNorm(3),
-            nn.Linear(3,dim),
+            nn.LayerNorm(d_in),
+            nn.Linear(d_in, dim),
             nn.GELU(),
-            nn.Linear(dim,dim),
+            nn.Linear(dim, dim // 2),
         )
 
         self.global_pe = nn.Sequential(
-            nn.LayerNorm(4),
-            nn.Linear(4,dim),
+            nn.LayerNorm(d_in),
+            nn.Linear(d_in, dim),
             nn.GELU(),
-            nn.Linear(dim,dim),
+            nn.Linear(dim, dim // 2),
         )
 
-        # --- Image‑Perception Positional Encoding (IPPE) ---
+        # --- Image-Perception Positional Encoding (IPPE, paper Eq. 6) ---
+        # gates the LOCAL half: p_local = MLP(LN(c_cam)) ∘ MLP(LN(F_i))
         self.img_feat_pe = nn.Sequential(
             nn.LayerNorm(feat_dim),
             nn.Linear(feat_dim, dim),
             nn.GELU(),
-            nn.Linear(dim, dim),
+            nn.Linear(dim, dim // 2),
         )
-        self.pe_fusion = nn.Linear(dim * 2, dim)
 
 
     def forward(
@@ -326,53 +328,42 @@ class CrossViewAttention(nn.Module):
         """
         b, n, _, _, _ = feature.shape
 
-        # --------------------------------------------------------------
-        # [1] BEV Self-Attention (논문: BEV query self-attn 단계)
-        # --------------------------------------------------------------
-        # world_xy = bev.grid[:2]                                            # 2 H W
-        # bev_pos = self.bev_embed(world_xy[None])          # 1 d H W
-        # bev_pos = bev_pos.expand(b, -1, -1, -1)                             # b d H W
-        # x = self.bev_self_atten(x, bev_pos=bev_pos, bev_mask = bev_mask)  # b d H W
-
-
-        pixel = self.image_plane                                                # b n 3 h w
+        pixel = self.image_plane                                                # 1 1 3 h w
         _, _, _, h, w = pixel.shape
-        
-        c = E_inv[..., -1:]                                                     # b n 4 1       (C 그리고 마지막은 1 : homogeneous) #translation cam to lidar R-1*t
-        
-        c_flat = rearrange(c, 'b n ... -> (b n) ...')[..., None]                # (b n) 4 1 1
-        c_embed = self.cam_embed(c_flat)                                        # (b n) d 1 1   "τ"
 
+        # --- DSPE: D depth-bin frustum points per pixel (paper Sec III-B) ---
         pixel_flat = rearrange(pixel, '... h w -> ... (h w)')                   # 1 1 3 (h w)
-        cam = I_inv @ pixel_flat                                                # b n 3 (h w)   <- [b n 3 3] @ [1 1 3 (h w)] each pixel coordinate multiply inverse intrinsic
-        # Local Positioning Embedding
-        cam_coords_flat = rearrange(cam, 'b n d (h w) -> (b n h w) d', h=h, w=w)
-        local_pos = self.local_pe(cam_coords_flat)                              # (b n h w) d
+        ray = I_inv @ pixel_flat                                                # b n 3 (h w)  z=1 ray
+        D = self.pe_depths.numel()
+        cam_pts = ray.unsqueeze(2) * self.pe_depths.view(1, 1, D, 1, 1)         # b n D 3 (h w)
 
+        # LOCAL PE — camera frame, extrinsic-FREE (intrinsics only)
+        local_in = rearrange(cam_pts, 'b n D c K -> (b n K) (D c)')            # (b n h w) D*3
+        local_pos = self.local_pe(local_in)                                     # (b n h w) d/2
 
+        # GLOBAL PE — same points in the reference frame (extrinsics applied)
+        cam_h = F.pad(cam_pts, (0, 0, 0, 1), value=1)                           # b n D 4 (h w)
+        glob = torch.einsum('b n i j, b n D j K -> b n D i K', E_inv, cam_h)    # b n D 4 (h w)
+        glob_in = rearrange(glob[:, :, :, :3], 'b n D c K -> (b n K) (D c)')   # slice homog. 1
+        global_pos = self.global_pe(glob_in)                                    # (b n h w) d/2
 
-        cam = F.pad(cam, (0, 0, 0, 1, 0, 0, 0, 0), value=1)                     # b n 4 (h w)   for homogeneous
-        d = E_inv @ cam                                                         # b n 4 (h w)   extrinsic 이랑 intrinsic invere 취한 pixel 값 (world 좌표계 근데 depth가 1인) "δ"       
-        d_flat = rearrange(d, 'b n d (h w) -> (b n h w) d', h=h, w=w)           # (b n h w) 4 
+        # IPPE gate on the LOCAL half (paper Eq. 6), then CONCAT (paper Eq. 5)
+        feat_flat_pe = rearrange(feature, 'b n d h w -> (b n h w) d')
+        local_pos = local_pos * self.img_feat_pe(feat_flat_pe)                  # (b n h w) d/2
+        p = torch.cat([local_pos, global_pos], dim=-1)                          # (b n h w) d
+        p = rearrange(p, '(b n h w) d -> (b n) d h w', b=b, n=n, h=h, w=w)      # (b n) d h w
 
-        # Global Positioning Embedding
-        global_pos = self.global_pe(d_flat)                                     # (b n h w) d                               
-
-        feat_flat = rearrange(feature, 'b n d h w -> (b n h w) d')
-        local_pos = local_pos * self.img_feat_pe(feat_flat)                     # (b n h w) d   local position embedding
-        pe_cat = torch.cat([local_pos, global_pos], dim=-1)                     # (b n h w) 2d
-        p = self.pe_fusion(pe_cat)                                              # (b n h w) d   position embedding
-        p = rearrange(p, '(b n h w) d -> (b n) d h w', b=b, n=n, h=h, w=w)      # (b n) d h w   position embedding
-
-        # img_embed = p - c_embed                                                 # (b n) d h w  
+        # KEY PE: absolute (paper decouples extrinsics into the global half only)
         img_embed = p
         img_embed = img_embed / (img_embed.norm(dim=1, keepdim=True) + 1e-7)    # (b n) d h w
 
+        # QUERY PE: absolute-world BEV coordinates — SAME frame convention as the key
+        # (CVT's camera-relative w_embed - c_embed would re-inject extrinsics into
+        # every query, undoing the decoupling the paper's robustness claim rests on).
         world = bev.grid[:2]                                                    # 2 H W
         w_embed = self.bev_embed(world[None])                                   # 1 d H W
-        bev_embed = w_embed - c_embed                                           # (b n) d H W  4x6 128 25 25
-        bev_embed = bev_embed / (bev_embed.norm(dim=1, keepdim=True) + 1e-7)    # (b n) d H W
-        query_pos = rearrange(bev_embed, '(b n) ... -> b n ...', b=b, n=n)      # b n d H W
+        w_embed = w_embed / (w_embed.norm(dim=1, keepdim=True) + 1e-7)          # 1 d H W
+        query_pos = repeat(w_embed[0], 'd H W -> b n d H W', b=b, n=n)          # b n d H W
 
         feature_flat = rearrange(feature, 'b n ... -> (b n) ...')               # (b n) d h w   "φ"
 
@@ -409,12 +400,13 @@ class BEVTransformerLayer(nn.Module):
 
 
 class BEVTransformerEncoder(nn.Module):
-    """Self→Cross 레이어 스택."""
+    """Self→Cross layer stack; layer i attends image-feature scale i (paper Fig. 2:
+    three encoder layers paired with the three backbone scales)."""
     def __init__(self, layers: nn.ModuleList):
         super().__init__()
         self.layers = layers
-    def forward(self, x, bev, feature, I_inv, E_inv, bev_mask=None):
-        for layer in self.layers:
+    def forward(self, x, bev, features, I_inv, E_inv, bev_mask=None):
+        for layer, feature in zip(self.layers, features):
             x = layer(x, bev, feature, I_inv, E_inv, bev_mask=bev_mask)
         return x
     
@@ -442,38 +434,16 @@ class Encoder(nn.Module):
             self.down = lambda x: x
 
         assert len(self.backbone.output_shapes) == len(middle)
+        assert len(self.backbone.output_shapes) == num_layers, \
+            "paper pairs each of the 3 encoder layers with one backbone scale"
+        self.feature_level = feature_level   # accepted for config compat; multi-scale is used
 
-        # cross_views = list()
-        # layers = list()
-
-        # for feat_shape, num_layers, layer_name in zip(self.backbone.output_shapes, middle, self.backbone.layer_names):
-        #     _, feat_dim, feat_height, feat_width = self.down(torch.zeros(feat_shape)).shape
-        #     print(f'layer_name: {layer_name}, feat_shape: {feat_shape}, feat_dim: {feat_dim}, feat_height: {feat_height}, feat_width: {feat_width}')
-        #     cva = CrossViewAttention(feat_height, feat_width, feat_dim, dim, **cross_view)
-        #     cross_views.append(cva)
-
-        #     layer = nn.Sequential(*[ResNetBottleNeck(dim) for _ in range(num_layers)])
-        #     layers.append(layer)
-        
-        # self.bev_embedding = BEVEmbedding(dim, **bev_embedding)
-        # self.cross_views = nn.ModuleList(cross_views)
-        # self.layers = nn.ModuleList(layers)
-        self.feature_level = feature_level
-
-
-        # pick feature level shape
-        feat_shape = self.backbone.output_shapes[feature_level]
-        _, feat_dim, feat_height, feat_width = self.down(torch.zeros(feat_shape)).shape
-        print(f'[Encoder] Using feature level {feature_level} ({self.backbone.layer_names[feature_level]}) '
-              f'-> (dim={feat_dim}, H={feat_height}, W={feat_width})')
-
-        # Cross-only module to be cloned across layers
-        base_cross = CrossViewAttention(feat_height, feat_width, feat_dim, dim, **cross_view)
-
-        # build Transformer stack
+        # One INDEPENDENTLY-initialized Self->Cross layer per backbone scale
+        # (paper Fig. 2: three scales feed the x3 encoder; no weight cloning).
         layers = []
-        for i in range(num_layers):
-            cross_i = deepcopy(base_cross)
+        for feat_shape in self.backbone.output_shapes:
+            _, feat_dim, feat_height, feat_width = self.down(torch.zeros(feat_shape)).shape
+            cross_i = CrossViewAttention(feat_height, feat_width, feat_dim, dim, **cross_view)
             layer = BEVTransformerLayer(
                 dim=dim,
                 bev_self_num_head=cross_view.get('bev_self_num_head', 8),
@@ -486,8 +456,6 @@ class Encoder(nn.Module):
 
         self.bev_embedding = BEVEmbedding(dim, **bev_embedding)
 
-
-
     def forward(self, batch):
         b, n, _, _, _ = batch['image'].shape
 
@@ -495,23 +463,14 @@ class Encoder(nn.Module):
         I_inv = batch['intrinsics'].inverse()           # b n 3 3
         E_inv = batch['extrinsics'].inverse()           # b n 4 4
 
-        # features = [self.down(y) for y in self.backbone(self.norm(image))]
-        backbone_feats = [self.down(y) for y in self.backbone(self.norm(image))]
-        feature = backbone_feats[self.feature_level]
-
+        features = [rearrange(self.down(y), '(b n) ... -> b n ...', b=b, n=n)
+                    for y in self.backbone(self.norm(image))]
 
         x = self.bev_embedding.get_prior()              # d H W
         x = repeat(x, '... -> b ...', b=b)              # b d H W
 
-        feature = rearrange(feature, '(b n) ... -> b n ...', b=b, n=n)
-        x = self.transformer(x, self.bev_embedding, feature, I_inv, E_inv)
+        x = self.transformer(x, self.bev_embedding, features, I_inv, E_inv)
         return x
-
-        # for cross_view, feature, layer in zip(self.cross_views, features, self.layers):
-        #     feature = rearrange(feature, '(b n) ... -> b n ...', b=b, n=n)
-
-        #     x = cross_view(x, self.bev_embedding, feature, I_inv, E_inv)
-        #     x = layer(x)
 
 
         # return x

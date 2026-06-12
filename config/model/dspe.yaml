@@ -31,6 +31,11 @@ encoder:
     no_image_features: False
     image_height: ${data.image.h}
     image_width: ${data.image.w}
+    bev_self_dropout: 0.0       # paper mentions no dropout; 0.1 default hurt a 1.9M model on 28k samples
+    bev_self_ffn_dim: 2048      # authors' class default (encoder.py BEVSelfAttnBlock); builder silently
+                                # overrode to dim*2=256 — param forensics: 8M(paper) = ours + dead backbone
+                                # span 3.8M(counting artifact) + THIS 1.38M + rounding
+    pe_depth_bins: 16           # D frustum depth bins per pixel (paper Sec III-B), PETR-style 1..61.2m
   bev_embedding:
     sigma: 1.0
     bev_height: ${data.bev.h}
