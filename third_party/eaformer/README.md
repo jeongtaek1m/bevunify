@@ -39,4 +39,3 @@ Integration with the unified pipeline lives outside this fork:
 CVT baseline, same pipeline/recipe (paper-exact protocol): 0.370. All comparisons —
 including against the papers' tables, which are @0.5-standardized (their LSS/FIERY rows
 are those papers' official @0.5 numbers) — use **IoU@0.5 only**.
-`tests/eval_threshold_sweep.py` is a per-threshold diagnostic, not a paper metric.
