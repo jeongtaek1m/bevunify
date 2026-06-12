@@ -27,8 +27,10 @@ CONFIG_NAME = "config.yaml"
 
 
 def maybe_resume_training(experiment):
-    save_dir = Path(experiment.save_dir).resolve()
-    checkpoints = list(save_dir.glob(f"**/{experiment.uuid}/checkpoints/*.ckpt"))
+    # Scope the resume glob to THIS project's directory — a bare save_dir/**/{uuid}
+    # could silently resume a same-uuid checkpoint from a DIFFERENT project.
+    save_dir = Path(experiment.save_dir).resolve() / experiment.project
+    checkpoints = sorted(save_dir.glob(f"**/{experiment.uuid}/checkpoints/*.ckpt"))
     if not checkpoints:
         return None
     log.info(f"Found {checkpoints[-1]}.")

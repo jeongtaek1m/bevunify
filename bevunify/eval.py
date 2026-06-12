@@ -436,6 +436,18 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
     if resume_src is not None:
         try:
             prev = json.loads(resume_src.read_text())
+            # ckpt-identity guard: resume files are keyed by (project, val_version) only,
+            # so a re-run with a DIFFERENT checkpoint (e.g. a sync_bn A/B retrain) would
+            # silently mix two ckpts' results in one file / report stale results. Refuse.
+            prev_ckpt, cur_ckpt = prev.get("ckpt"), cfg.get("ckpt")
+            if prev_ckpt and cur_ckpt and str(prev_ckpt) != str(cur_ckpt):
+                log.warning(f"[eval/vr] {resume_src.name} was produced by a DIFFERENT ckpt\n"
+                            f"    prev: {prev_ckpt}\n    cur : {cur_ckpt}\n"
+                            f"  -> starting FRESH (use a new +eval.out_dir per ckpt).")
+                prev = {}
+            if prev_ckpt is None and cur_ckpt is not None:
+                log.warning(f"[eval/vr] {resume_src.name} has no ckpt record — cannot verify it matches "
+                            f"{cur_ckpt}; resuming anyway (legacy file). Delete it if the ckpt changed.")
             results = prev.get("results", [])
             # C2 fix: drop stale entries that aren't in the CURRENT grid (e.g. user
             # changed axes/magnitudes between launches). Prevents _aggregate_mvrs from
@@ -497,6 +509,7 @@ def _run_vr(cfg, eval_cfg, model_module, data_module, out_dir):
 
     tables = _aggregate_mvrs(results)
     payload = dict(eval_cfg=OmegaConf.to_container(eval_cfg, resolve=True),
+                   ckpt=cfg.get("ckpt"),
                    results=results, mVRS=tables)
     (out_dir / "eval_vr.json").write_text(json.dumps(payload, indent=2))
     partial_path.unlink(missing_ok=True)   # success → drop partial
