@@ -1,0 +1,10 @@
+# @package _global_
+# GaussianLSS with extrinsic augmentation (uniform ±20°, p=0.5). Sedan only.
+# bs=16 now comes from recipe/gaussianlss.yaml (baked in to match baseline ckpts).
+defaults:
+  - gaussianlss
+  - override /augmentation: extrin_uniform20_p05
+
+experiment:
+  project: bevunify-glss-carla-aug
+  wandb_project: bevunify-glss-carla

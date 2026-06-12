@@ -17,8 +17,11 @@ trainer:
   max_steps: -1
   max_epochs: 50
 
-# per-model batch (pushed so every server matches). 32 = power-of-2 for GPU efficiency;
-# needs high VRAM (B200) — OOMs a 48 GB card. effective batch = train_batch_size x devices.
+# per-model batch. 16/GPU x 2-GPU DDP = effective 32 — the setting ALL production
+# CARLA ckpts were trained with (verified from ckpt hyper_parameters.loader across
+# sedan/suv/bus). Earlier this file said 32/GPU and the launcher forced 16 via CLI;
+# the override is now baked in so a plain `+experiment=gaussianlss` reproduces the
+# baseline exactly without remembering the CLI flag.
 loader:
-  train_batch_size: 32
-  val_batch_size: 32
+  train_batch_size: 16
+  val_batch_size: 16
