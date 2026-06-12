@@ -1,10 +1,11 @@
-"""Post-hoc threshold-sweep IoU eval (the EAFormer/CVT papers' metric = max IoU over
-{0.4, 0.45, 0.5} at vis>=2). Training logs the unified IoU@0.5 only; run this on a
-checkpoint when a paper-comparable number is needed.
+"""Post-hoc threshold-sweep IoU diagnostic (per-threshold IoU at 0.30..0.50, vis>=2).
 
-WARNING: the MAX-over-thresholds number is NOT comparable to the unified IoU@0.5
-table (it is >= @0.5 by construction). Use it ONLY against the papers' reported
-numbers — never mix it into the cross-model @0.5 comparison.
+NOTE on conventions: the CVT/EAFormer/DSPE papers' tables are @0.5-standardized
+(their LSS=32.1 / FIERY=35.8 rows are those papers' official @0.5 numbers, and the
+original CVT metrics.py reports per-threshold IoUs — it does NOT take a max).
+"max over {0.4,0.45,0.5}" is a GaussianLSS-host convention only. Therefore:
+PAPER COMPARISONS USE @0.5. The sweep (and its MAX line) is a calibration
+diagnostic — never quote MAX against a paper number or the unified @0.5 table.
 
     $PY tests/eval_threshold_sweep.py <experiment> <ckpt> [--dataset_dir /abs/nuscenes]
     e.g. $PY tests/eval_threshold_sweep.py eaformer logs/bevseg-eaformer/<run>/checkpoints/last.ckpt

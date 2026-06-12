@@ -36,6 +36,7 @@ Integration with the unified pipeline lives outside this fork:
 | paper-exact: 1 GPU, eff. batch 16, lr 4e-3, 30 ep | `... trainer.devices=1` | 0.370 |
 | 2-GPU: eff. batch 32, lr 5.7e-3 (√2), 60 ep (update-matched) | `... optimizer.lr=5.7e-3 trainer.max_epochs=60` | 0.371 |
 
-CVT baseline, same pipeline/recipe (paper-exact protocol): 0.370. Unified comparisons
-use **IoU@0.5 only**; the papers' max-IoU-over-{0.4,0.45,0.5} number is produced
-post-hoc by `tests/eval_threshold_sweep.py` and must not be mixed into the @0.5 table.
+CVT baseline, same pipeline/recipe (paper-exact protocol): 0.370. All comparisons —
+including against the papers' tables, which are @0.5-standardized (their LSS/FIERY rows
+are those papers' official @0.5 numbers) — use **IoU@0.5 only**.
+`tests/eval_threshold_sweep.py` is a per-threshold diagnostic, not a paper metric.
