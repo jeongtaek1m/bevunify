@@ -1,8 +1,10 @@
-# BEVFormer-TINY (segmentation), pure-PyTorch port. Same encoder/backbone as the
-# base port (R50 single-level FPN, single-frame, 6-layer encoder, ffn 512) but the
-# defining tiny change: BEV query grid 50x50 (vs base 200x200). The 50x50 seg logits
-# are bilinear-upsampled in the wrapper to the 200x200 GT (out_h/out_w) — standard
-# semantic-seg practice. R50 + single-frame match the other fair-comparison baselines.
+# BEVFormer-TINY (segmentation), pure-PyTorch port. Faithful to the official
+# fundamentalvision bevformer_tiny.py: R50 (no DCN), BEV 50x50, 3-layer encoder,
+# ffn 512 (=dim*2), single-level (C5) FPN, SCA num_points 8, num_points_in_pillar 4.
+# Two intentional deviations for fair comparison with the other 8 baselines:
+# single-frame (official tiny is queue_length=3 temporal) and 224x480 input
+# (official 800x450). The 50x50 BEV feature is bilinear-upsampled to the 200x200 GT
+# (out_h/out_w) before the seg decoder — standard semantic-seg practice.
 _target_: bevunify.wrappers.bevformer.BEVFormerWrapper
 key: ${key}
 num_classes: 1
@@ -12,7 +14,7 @@ bev_h: 50                            # TINY BEV query grid (vs base 200)
 bev_w: 50
 out_h: ${data.bev.h}                 # GT/label resolution (200) -> upsample target
 out_w: ${data.bev.w}                 # 200
-num_layers: 6                        # encoder depth kept (BEVFormer-tiny keeps base encoder)
+num_layers: 3                        # official bevformer_tiny.py encoder depth (vs base 6)
 num_points_in_pillar: 4
 feedforward_channels: 512            # _ffn_dim_ = embed_dims * 2 (base/tiny convention)
 sca_num_points: 8                    # spatial cross-attention sampling points
