@@ -1,0 +1,23 @@
+# BEVFormer-TINY (segmentation), pure-PyTorch port. Same encoder/backbone as the
+# base port (R50 single-level FPN, single-frame, 6-layer encoder, ffn 512) but the
+# defining tiny change: BEV query grid 50x50 (vs base 200x200). The 50x50 seg logits
+# are bilinear-upsampled in the wrapper to the 200x200 GT (out_h/out_w) — standard
+# semantic-seg practice. R50 + single-frame match the other fair-comparison baselines.
+_target_: bevunify.wrappers.bevformer.BEVFormerWrapper
+key: ${key}
+num_classes: 1
+embed_dims: 256
+num_cams: 6
+bev_h: 50                            # TINY BEV query grid (vs base 200)
+bev_w: 50
+out_h: ${data.bev.h}                 # GT/label resolution (200) -> upsample target
+out_w: ${data.bev.w}                 # 200
+num_layers: 6                        # encoder depth kept (BEVFormer-tiny keeps base encoder)
+num_points_in_pillar: 4
+feedforward_channels: 512            # _ffn_dim_ = embed_dims * 2 (base/tiny convention)
+sca_num_points: 8                    # spatial cross-attention sampling points
+tsa_num_points: 4                    # temporal self-attention sampling points (single-frame: TSA self-only)
+pc_range: [-50.0, -50.0, -5.0, 50.0, 50.0, 3.0]   # x,y match the +-50 m GT grid
+pretrained_backbone: true            # torchvision RN-50 ImageNet weights
+use_checkpoint: true                 # gradient checkpointing on encoder layers
+axis_fix: flip_xy                    # same BEVFormer rot90+flip frame fix vs GaussianLSS GT

@@ -1,0 +1,20 @@
+# @package _global_
+# python -m bevunify.train +experiment=bevformer_tiny data=nuscenes
+# BEVFormer-tiny (50x50 BEV, R50, single-frame) seg baseline.
+defaults:
+  - override /model: bevformer_tiny
+  - override /gt: seg_only            # vehicle binary only, no center/offset
+  - override /loss: seg_bce           # BCE pos_weight=2.13 (same as LSS/LaRa)
+  - override /recipe: bevformer
+  - override /metrics: bev_metrics
+  - override /augmentation: none
+
+data:
+  split_intrin_extrin: True           # need intrinsics + extrinsics -> lidar2img
+  vehicle: True
+
+experiment:
+  project: bevunify-bevformer-tiny-nuscenes
+
+key: vehicle
+val_only: False

@@ -22,10 +22,17 @@ class BEVFormerWrapper(nn.Module):
                  bev_h=200, bev_w=200, num_layers=6, num_points_in_pillar=4,
                  feedforward_channels=512, sca_num_points=8, tsa_num_points=4,
                  pc_range=(-50.0, -50.0, -5.0, 50.0, 50.0, 3.0),
-                 pretrained_backbone=True, use_checkpoint=True, axis_fix="none"):
+                 pretrained_backbone=True, use_checkpoint=True, axis_fix="none",
+                 out_h=None, out_w=None):
         super().__init__()
         self.key = key
         self.axis_fix = axis_fix
+        # Native seg head is resolution-preserving -> net output is (bev_h, bev_w).
+        # For the tiny variant (bev 50x50) the GT BEV is still 200x200, so we
+        # bilinear-upsample the logits to (out_h, out_w) = the label resolution
+        # (standard semantic-seg practice). Defaults to bev_h/bev_w -> no-op for base.
+        self.out_h = out_h if out_h is not None else bev_h
+        self.out_w = out_w if out_w is not None else bev_w
         # torchvision RN-50 expects ImageNet-normalized RGB; the unified loader
         # feeds [0,1] (configs/img_params), so normalize here.
         self.register_buffer("_imnet_mean",
@@ -39,7 +46,7 @@ class BEVFormerWrapper(nn.Module):
             feedforward_channels=feedforward_channels,
             sca_num_points=sca_num_points, tsa_num_points=tsa_num_points,
             pc_range=pc_range, pretrained_backbone=pretrained_backbone,
-            use_checkpoint=use_checkpoint)
+            use_checkpoint=use_checkpoint, out_h=self.out_h, out_w=self.out_w)
 
     def _fix_axes(self, t):
         if self.axis_fix == "flip_x":
@@ -60,5 +67,5 @@ class BEVFormerWrapper(nn.Module):
         E = batch["extrinsics"]                             # (B,N,4,4)
         lidar2img = torch.matmul(K, E)                      # (B,N,4,4)
 
-        logits = self.net(image, lidar2img)                 # (B,1,bev_h,bev_w)
+        logits = self.net(image, lidar2img)                 # (B,1,out_h,out_w)
         return {self.key: self._fix_axes(logits)}

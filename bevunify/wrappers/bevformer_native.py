@@ -642,10 +642,16 @@ class BEVFormerNative(nn.Module):
                  num_points_in_pillar=4, feedforward_channels=512,
                  sca_num_points=8, tsa_num_points=4,
                  pc_range=(-50.0, -50.0, -5.0, 50.0, 50.0, 3.0),
-                 pretrained_backbone=True, use_checkpoint=True):
+                 pretrained_backbone=True, use_checkpoint=True,
+                 out_h=None, out_w=None):
         super().__init__()
         self.bev_h = bev_h
         self.bev_w = bev_w
+        # tiny: BEV grid (e.g. 50x50) < GT (200x200). Upsample the BEV feature to
+        # (out_h, out_w) before the (resolution-preserving) seg decoder. Defaults
+        # to bev_h/bev_w -> no-op for the base 200x200 config.
+        self.out_h = out_h if out_h is not None else bev_h
+        self.out_w = out_w if out_w is not None else bev_w
         self.embed_dims = embed_dims
         self.num_cams = num_cams
         self.num_levels = num_levels
@@ -719,4 +725,7 @@ class BEVFormerNative(nn.Module):
         seg_bev = bev_embed.reshape(B, self.bev_h, self.bev_w, -1).permute(0, 3, 1, 2)
         seg_bev = torch.rot90(seg_bev, k=-1, dims=[2, 3])
         seg_bev = torch.flip(seg_bev, dims=[3])
-        return self.seg_decoder(seg_bev)                          # (B, outC, H, W)
+        if (self.bev_h, self.bev_w) != (self.out_h, self.out_w):  # tiny: 50x50 -> 200x200
+            seg_bev = F.interpolate(seg_bev, size=(self.out_h, self.out_w),
+                                    mode="bilinear", align_corners=False)
+        return self.seg_decoder(seg_bev)                          # (B, outC, out_h, out_w)
