@@ -1,0 +1,20 @@
+# @package _global_
+# python -m bevunify.train +experiment=bevformer data=nuscenes
+# 448x800 variant: add  data.image.h=448 data.image.w=800
+defaults:
+  - override /model: bevformer
+  - override /gt: seg_only            # vehicle binary only, no center/offset
+  - override /loss: seg_bce           # BCE pos_weight=2.13 (same as LSS/LaRa)
+  - override /recipe: bevformer
+  - override /metrics: bev_metrics
+  - override /augmentation: none      # set warp|extrin_noise|warp_extrin to augment
+
+data:
+  split_intrin_extrin: True           # need intrinsics + extrinsics -> lidar2img
+  vehicle: True
+
+experiment:
+  project: bevunify-bevformer-nuscenes
+
+key: vehicle
+val_only: False

@@ -1,0 +1,21 @@
+# BEVFormer (segmentation), pure-PyTorch port (zero mm* deps; MSDA vendored in pure PyTorch).
+# Single-frame, ResNet-50, 200x200 BEV over +-50 m; vehicle-binary seg head.
+# Consumes binary seg only (gt/seg_only + loss/seg_bce). Needs split_intrin_extrin=True.
+_target_: bevunify.wrappers.bevformer.BEVFormerWrapper
+key: ${key}
+num_classes: 1
+embed_dims: 256
+num_cams: 6
+bev_h: ${data.bev.h}                 # 200 (canonical GaussianLSS frame)
+bev_w: ${data.bev.w}                 # 200
+num_layers: 6                        # BEVFormer-base encoder depth
+num_points_in_pillar: 4
+feedforward_channels: 512            # _ffn_dim_ = embed_dims * 2
+sca_num_points: 8                    # spatial cross-attention sampling points
+tsa_num_points: 4                    # temporal self-attention sampling points
+pc_range: [-50.0, -50.0, -5.0, 50.0, 50.0, 3.0]   # x,y match the +-50 m GT grid
+pretrained_backbone: true            # torchvision RN-50 ImageNet weights
+use_checkpoint: true                 # gradient checkpointing on encoder layers (BEVFormer with_cp)
+axis_fix: flip_xy                    # determined by orientation probe: BEVFormer's rot90+flip
+                                     # frame is doubly-flipped vs the GaussianLSS GT view matrix
+                                     # ([[0,-2,100],[-2,0,100],[0,0,1]]); flip(-2,-1) aligns both axes

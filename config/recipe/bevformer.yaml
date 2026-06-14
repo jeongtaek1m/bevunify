@@ -1,0 +1,26 @@
+# @package _global_
+# BEVFormer recipe: AdamW + OneCycleLR (cos), 24 epochs (BEVFormer-native budget).
+# Native optimizer settings restored after run-1 overfit (train 0.008 / val 0.19):
+# weight_decay 0.01 + img-backbone lr_mult 0.1 (upstream paramwise_cfg). The RN-50
+# trunk (stem+layers) trains at 0.1x; the FPN neck stays at full LR (= upstream
+# img_neck). OneCycle total_steps auto-filled since max_steps=-1.
+optimizer:
+  lr: 2e-4
+  weight_decay: 0.01
+  backbone_lr_mult: 0.1
+  backbone_prefixes: ["net.img_backbone.stem", "net.img_backbone.layer"]
+scheduler:
+  div_factor: 10
+  pct_start: 0.1
+  final_div_factor: 10
+  max_lr: ${optimizer.lr}
+  total_steps: ${trainer.max_steps}
+  cycle_momentum: False
+  anneal_strategy: "cos"
+  interval: step
+trainer:
+  max_steps: -1
+  max_epochs: 24
+loader:
+  train_batch_size: 8        # 200x200 BEV + 6-layer deformable encoder is memory-heavy
+  val_batch_size: 8
